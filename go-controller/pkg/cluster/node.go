@@ -64,7 +64,22 @@ func (cluster *OvnClusterController) StartClusterNode(name string) error {
 	var clusterSubnets []string
 	var cidr string
 
+	var readyChan = make(chan bool, 1)
 	var wg sync.WaitGroup
+
+	err = cluster.watchConfigEndpoints(readyChan)
+	if err != nil {
+		return err
+	}
+
+	// Hold until we are certain that the endpoint has been setup.
+	// We risk polling an inactive master if we don't wait while a new leader election is on-going
+	<-readyChan
+
+	err = setupOVNNode(name)
+	if err != nil {
+		return err
+	}
 
 	for _, clusterSubnet := range config.Default.ClusterSubnets {
 		clusterSubnets = append(clusterSubnets, clusterSubnet.CIDR.String())
@@ -93,12 +108,7 @@ func (cluster *OvnClusterController) StartClusterNode(name string) error {
 
 	logrus.Infof("Node %s ready for ovn initialization with subnet %s", node.Name, subnet.String())
 
-	err = cluster.watchConfigEndpoints()
-	if err != nil {
-		return err
-	}
-
-	err = setupOVNNode(name)
+	mgmtPortAnnotations, err := CreateManagementPort(node.Name, subnet, clusterSubnets)
 	if err != nil {
 		return err
 	}
@@ -109,11 +119,6 @@ func (cluster *OvnClusterController) StartClusterNode(name string) error {
 
 	type readyFunc func(string) (bool, error)
 	var readyFuncs []readyFunc
-
-	mgmtPortAnnotations, err := CreateManagementPort(node.Name, subnet, clusterSubnets)
-	if err != nil {
-		return err
-	}
 
 	readyFuncs = append(readyFuncs, ManagementPortReady)
 	wg.Add(len(readyFuncs))
@@ -170,22 +175,18 @@ func (cluster *OvnClusterController) StartClusterNode(name string) error {
 }
 
 func validateOVNConfigEndpoint(ep *kapi.Endpoints) bool {
-	if len(ep.Subsets) == 1 && len(ep.Subsets[0].Ports) == 2 {
-		return true
-	}
-
-	return false
-
+	return len(ep.Subsets) == 1 && len(ep.Subsets[0].Ports) == 2 && len(ep.Subsets[0].Addresses) == 1
 }
 
-func updateOVNConfig(ep *kapi.Endpoints) error {
+func updateOVNConfig(ep *kapi.Endpoints, readyChan chan bool) error {
+
 	if !validateOVNConfigEndpoint(ep) {
-		return fmt.Errorf("endpoint %s is not of the right format to configure OVN", ep.Name)
+		return fmt.Errorf("endpoint %v is not of the right format to configure OVN", ep)
 	}
 
 	var southboundDBPort string
 	var northboundDBPort string
-	var masterIPList []string
+	var masterIP string
 
 	for _, ovnDB := range ep.Subsets[0].Ports {
 		if ovnDB.Name == "south" {
@@ -196,11 +197,9 @@ func updateOVNConfig(ep *kapi.Endpoints) error {
 		}
 	}
 
-	for _, address := range ep.Subsets[0].Addresses {
-		masterIPList = append(masterIPList, address.IP)
-	}
+	masterIP = ep.Subsets[0].Addresses[0].IP
 
-	if err := config.UpdateOVNNodeAuth(masterIPList, southboundDBPort, northboundDBPort); err != nil {
+	if err := config.UpdateOVNNodeAuth(masterIP, southboundDBPort, northboundDBPort); err != nil {
 		return err
 	}
 
@@ -211,17 +210,18 @@ func updateOVNConfig(ep *kapi.Endpoints) error {
 		logrus.Infof("OVN databases reconfigured, masterIP %s, northbound-db %s, southbound-db %s", ep.Subsets[0].Addresses[0].IP, northboundDBPort, southboundDBPort)
 	}
 
+	readyChan <- true
 	return nil
 }
 
 //watchConfigEndpoints starts the watching of Endpoint resource and calls back to the appropriate handler logic
-func (cluster *OvnClusterController) watchConfigEndpoints() error {
+func (cluster *OvnClusterController) watchConfigEndpoints(readyChan chan bool) error {
 	_, err := cluster.watchFactory.AddFilteredEndpointsHandler(config.Kubernetes.OVNConfigNamespace,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				ep := obj.(*kapi.Endpoints)
 				if ep.Name == "ovnkube-db" {
-					if err := updateOVNConfig(ep); err != nil {
+					if err := updateOVNConfig(ep, readyChan); err != nil {
 						logrus.Errorf(err.Error())
 					}
 				}
@@ -230,7 +230,7 @@ func (cluster *OvnClusterController) watchConfigEndpoints() error {
 				epNew := new.(*kapi.Endpoints)
 				epOld := old.(*kapi.Endpoints)
 				if !reflect.DeepEqual(epNew.Subsets, epOld.Subsets) && epNew.Name == "ovnkube-db" {
-					if err := updateOVNConfig(epNew); err != nil {
+					if err := updateOVNConfig(epNew, readyChan); err != nil {
 						logrus.Errorf(err.Error())
 					}
 				}
