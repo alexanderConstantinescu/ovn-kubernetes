@@ -121,7 +121,6 @@ func (hacontroller *HAMasterController) ConfigureAsActive(masterNodeName string)
 	if err != nil {
 		return err
 	}
-
 	return hacontroller.ovnController.Run()
 }
 
@@ -244,8 +243,8 @@ func (hacontroller *HAMasterController) getOVNAddresses() (string, string, error
 		if err != nil {
 			return "", "", fmt.Errorf("unable to retrieve cluster's master node address: %v", err)
 		}
-		ovnNorthAddresses += fmt.Sprintf("%s:%s:%s,", config.OvnDBSchemeTCP, address, "9641")
-		ovnSouthAddresses += fmt.Sprintf("%s:%s:%s,", config.OvnDBSchemeTCP, address, "9642")
+		ovnNorthAddresses += fmt.Sprintf("%s:%s:%v,", config.OvnDBSchemeTCP, address, config.MasterHA.NbPort)
+		ovnSouthAddresses += fmt.Sprintf("%s:%s:%v,", config.OvnDBSchemeTCP, address, config.MasterHA.SbPort)
 	}
 
 	ovnNorthAddresses = ovnNorthAddresses[0 : len(ovnNorthAddresses)-1]

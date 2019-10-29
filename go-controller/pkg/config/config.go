@@ -71,6 +71,8 @@ var (
 
 	// MasterHA holds master HA related config options.
 	MasterHA = MasterHAConfig{
+		NbPort:                6641,
+		SbPort:                6642,
 		ElectionLeaseDuration: 60,
 		ElectionRenewDeadline: 30,
 		ElectionRetryPeriod:   20,
@@ -191,6 +193,8 @@ type OvnAuthConfig struct {
 // MasterHAConfig holds configuration for master HA
 // configuration.
 type MasterHAConfig struct {
+	NbPort                int `gcfg:"port"`
+	SbPort                int `gcfg:"port"`
 	ElectionLeaseDuration int `gcfg:"election-lease-duration"`
 	ElectionRenewDeadline int `gcfg:"election-renew-deadline"`
 	ElectionRetryPeriod   int `gcfg:"election-retry-period"`
@@ -603,6 +607,16 @@ var OVNGatewayFlags = []cli.Flag{
 
 // MasterHAFlags capture OVN northbound database options
 var MasterHAFlags = []cli.Flag{
+	cli.IntFlag{
+		Name:        "nb-port",
+		Usage:       "Port of the OVN northbound DB server to configure (default: 6641)",
+		Destination: &cliConfig.MasterHA.NbPort,
+	},
+	cli.IntFlag{
+		Name:        "sb-port",
+		Usage:       "Port of the OVN southbound DB server to configure (default: 6642)",
+		Destination: &cliConfig.MasterHA.SbPort,
+	},
 	cli.IntFlag{
 		Name:        "ha-election-lease-duration",
 		Usage:       "Leader election lease duration (in secs) (default: 60)",
@@ -1217,22 +1231,18 @@ func (a *OvnAuthConfig) SetDBAuth() error {
 	return nil
 }
 
-func (a *OvnAuthConfig) updateIP(newIP string, port string) error {
-	a.Address = string(OvnDBSchemeTCP) + ":" + newIP + ":" + port
-	a.Scheme = OvnDBSchemeTCP
-	return nil
+func (a *OvnAuthConfig) updateIP(newIP []string, port string) {
+	newAddresses := make([]string, 0, len(newIP))
+	for _, ipAddress := range newIP {
+		newAddresses = append(newAddresses, fmt.Sprintf("%s:%s:%s", OvnDBSchemeTCP, ipAddress, port))
+	}
+	a.Address = strings.Join(newAddresses, ",")
 }
 
 // UpdateOVNNodeAuth updates the host and URL in ClientAuth
 // for both OvnNorth and OvnSouth. It updates them with the new masterIP.
-func UpdateOVNNodeAuth(masterIP string, southboundDBPort, northboundDBPort string) error {
+func UpdateOVNNodeAuth(masterIP []string, southboundDBPort, northboundDBPort string) {
 	logrus.Debugf("Update OVN node auth with new master ip: %s", masterIP)
-	if err := OvnNorth.updateIP(masterIP, northboundDBPort); err != nil {
-		return fmt.Errorf("failed to update OvnNorth ClientAuth URL: %v", err)
-	}
-
-	if err := OvnSouth.updateIP(masterIP, southboundDBPort); err != nil {
-		return fmt.Errorf("failed to update OvnSouth ClientAuth URL: %v", err)
-	}
-	return nil
+	OvnNorth.updateIP(masterIP, northboundDBPort)
+	OvnSouth.updateIP(masterIP, southboundDBPort)
 }
