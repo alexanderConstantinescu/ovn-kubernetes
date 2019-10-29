@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"encoding/json"
+
 	"github.com/sirupsen/logrus"
 
 	kapi "k8s.io/api/core/v1"
@@ -27,6 +28,7 @@ type Interface interface {
 	GetPodsByLabels(namespace string, selector labels.Selector) (*kapi.PodList, error)
 	GetNodes() (*kapi.NodeList, error)
 	GetNode(name string) (*kapi.Node, error)
+	GetNodesByLabels(selector labels.Selector) (*kapi.NodeList, error)
 	GetService(namespace, name string) (*kapi.Service, error)
 	GetEndpoints(namespace string) (*kapi.EndpointsList, error)
 	GetNamespaces() (*kapi.NamespaceList, error)
@@ -122,6 +124,14 @@ func (k *Kube) GetPodsByLabels(namespace string, selector labels.Selector) (*kap
 	options := metav1.ListOptions{}
 	options.LabelSelector = selector.String()
 	return k.KClient.CoreV1().Pods(namespace).List(options)
+}
+
+// GetNodesByLabels obtains the Nodes resources from kubernetes apiserver,
+// given the label
+func (k *Kube) GetNodesByLabels(selector labels.Selector) (*kapi.NodeList, error) {
+	options := metav1.ListOptions{}
+	options.LabelSelector = selector.String()
+	return k.KClient.CoreV1().Nodes().List(options)
 }
 
 // GetNodes returns the list of all Node objects from kubernetes

@@ -207,7 +207,7 @@ func updateOVNConfig(ep *kapi.Endpoints, readyChan chan bool) error {
 		if err := auth.SetDBAuth(); err != nil {
 			return err
 		}
-		logrus.Infof("OVN databases reconfigured, masterIP %s, northbound-db %s, southbound-db %s", ep.Subsets[0].Addresses[0].IP, northboundDBPort, southboundDBPort)
+		logrus.Infof("OVN databases reconfigured, masterIP %s, northbound-db %s, southbound-db %s", masterIP, northboundDBPort, southboundDBPort)
 	}
 
 	readyChan <- true

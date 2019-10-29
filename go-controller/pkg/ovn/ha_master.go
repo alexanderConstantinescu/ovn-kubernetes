@@ -2,12 +2,17 @@ package ovn
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/factory"
+	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/util"
 	"github.com/sirupsen/logrus"
+	kapi "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
@@ -59,7 +64,10 @@ func (hacontroller *HAMasterController) StartHAMasterController() error {
 	}
 
 	hacontrollerOnStartedLeading := func(ctx context.Context) {
-		logrus.Infof(" I (%s) won the election. In active mode", hacontroller.nodeName)
+		logrus.Infof("I (%s) won the election. In active mode", hacontroller.nodeName)
+		if err := hacontroller.createDBCluster(); err != nil {
+			logrus.Infof("unable to create cluster: %v", err)
+		}
 		if err := hacontroller.ConfigureAsActive(hacontroller.nodeName); err != nil {
 			panic(err.Error())
 		}
@@ -76,9 +84,12 @@ func (hacontroller *HAMasterController) StartHAMasterController() error {
 		os.Exit(1)
 	}
 
-	hacontrollerNewLeader := func(nodeName string) {
+	hacontrollerOnNewLeader := func(nodeName string) {
 		if nodeName != hacontroller.nodeName {
-			logrus.Infof(" I (%s) lost the election to %s. In Standby mode", hacontroller.nodeName, nodeName)
+			logrus.Infof("I (%s) lost the election to %s. In Standby mode", hacontroller.nodeName, nodeName)
+			if err := hacontroller.joinDBCluster(nodeName); err != nil {
+				logrus.Errorf("unable to join the cluster: %v", err)
+			}
 		}
 	}
 
@@ -90,7 +101,7 @@ func (hacontroller *HAMasterController) StartHAMasterController() error {
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: hacontrollerOnStartedLeading,
 			OnStoppedLeading: hacontrollerOnStoppedLeading,
-			OnNewLeader:      hacontrollerNewLeader,
+			OnNewLeader:      hacontrollerOnNewLeader,
 		},
 	}
 
@@ -112,4 +123,133 @@ func (hacontroller *HAMasterController) ConfigureAsActive(masterNodeName string)
 	}
 
 	return hacontroller.ovnController.Run()
+}
+
+func (hacontroller *HAMasterController) createDBCluster() error {
+	localArgs, err := hacontroller.prepareArgs()
+	if err != nil {
+		return err
+	}
+	if _, err := hacontroller.execLocally(localArgs, "start_northd"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (hacontroller *HAMasterController) joinDBCluster(masterNodeName string) error {
+	masterNode, err := hacontroller.ovnController.kube.GetNode(masterNodeName)
+	if err != nil {
+		return err
+	}
+
+	masterAddress, err := hacontroller.getNodeAddress(*masterNode)
+	if err != nil {
+		return err
+	}
+
+	localArgs, err := hacontroller.prepareArgs()
+	if err != nil {
+		return err
+	}
+
+	clusterCmd := []string{
+		fmt.Sprintf("--db-nb-addr=%s", localArgs.nodeAddress),
+		"--db-nb-create-insecure-remote=yes",
+		fmt.Sprintf("--db-sb-addr=%s", localArgs.nodeAddress),
+		"--db-sb-create-insecure-remote=yes",
+		fmt.Sprintf("--db-nb-cluster-local-addr=%s", localArgs.nodeAddress),
+		fmt.Sprintf("--db-sb-cluster-local-addr=%s", localArgs.nodeAddress),
+		fmt.Sprintf("--db-nb-cluster-remote-addr=%s", masterAddress),
+		fmt.Sprintf("--db-sb-cluster-remote-addr=%s", masterAddress),
+		fmt.Sprintf("--ovn-northd-nb-db=%s", localArgs.ovnNorthAddresses),
+		fmt.Sprintf("--ovn-northd-sb-db=%s", localArgs.ovnSouthAddresses),
+		"start_northd",
+	}
+
+	if _, stderr, err := util.RunOVNctl(clusterCmd...); err != nil {
+		return fmt.Errorf("db creation error: %v, %s", err, stderr)
+	}
+	return nil
+}
+
+type localArgs struct {
+	nodeAddress       string
+	ovnNorthAddresses string
+	ovnSouthAddresses string
+}
+
+func (hacontroller *HAMasterController) prepareArgs() (*localArgs, error) {
+	node, err := hacontroller.ovnController.kube.GetNode(hacontroller.nodeName)
+	if err != nil {
+		return nil, err
+	}
+
+	nodeAddress, err := hacontroller.getNodeAddress(*node)
+	if err != nil {
+		return nil, err
+	}
+
+	ovnNorthAddresses, ovnSouthAddresses, err := hacontroller.getOVNAddresses()
+	if err != nil {
+		return nil, err
+	}
+	return &localArgs{nodeAddress, ovnNorthAddresses, ovnSouthAddresses}, nil
+}
+
+func (hacontroller *HAMasterController) execLocally(localArgs *localArgs, cmd string) (string, error) {
+	clusterCmd := []string{
+		fmt.Sprintf("--db-nb-addr=%s", localArgs.nodeAddress),
+		"--db-nb-create-insecure-remote=yes",
+		fmt.Sprintf("--db-sb-addr=%s", localArgs.nodeAddress),
+		"--db-sb-create-insecure-remote=yes",
+		fmt.Sprintf("--db-nb-cluster-local-addr=%s", localArgs.nodeAddress),
+		fmt.Sprintf("--db-sb-cluster-local-addr=%s", localArgs.nodeAddress),
+		fmt.Sprintf("--ovn-northd-nb-db=%s", localArgs.ovnNorthAddresses),
+		fmt.Sprintf("--ovn-northd-sb-db=%s", localArgs.ovnSouthAddresses),
+		cmd,
+	}
+
+	stdout, stderr, err := util.RunOVNctl(clusterCmd...)
+	if err != nil && err.Error() != "exit status 1" {
+		return "", fmt.Errorf("db command error: %v, %s", err, stderr)
+	}
+	return stdout, nil
+}
+
+func (hacontroller *HAMasterController) getNodeAddress(node kapi.Node) (string, error) {
+	for _, address := range node.Status.Addresses {
+		if address.Type == kapi.NodeInternalIP {
+			return address.Address, nil
+		}
+	}
+	return "", fmt.Errorf("node does not have an internalIP: %v", node)
+}
+
+func (hacontroller *HAMasterController) getOVNAddresses() (string, string, error) {
+	requirement, err := labels.NewRequirement("node-role.kubernetes.io/master", selection.Equals, []string{""})
+	if err != nil {
+		return "", "", fmt.Errorf("unable to create requirement label: %v", err)
+	}
+
+	selector := labels.NewSelector().Add(*requirement)
+
+	masterNodes, err := hacontroller.ovnController.kube.GetNodesByLabels(selector)
+	if err != nil {
+		return "", "", fmt.Errorf("unable to retrieve master nodes: %v", err)
+	}
+
+	ovnNorthAddresses, ovnSouthAddresses := "", ""
+	for _, masterNode := range masterNodes.Items {
+		address, err := hacontroller.getNodeAddress(masterNode)
+		if err != nil {
+			return "", "", fmt.Errorf("unable to retrieve cluster's master node address: %v", err)
+		}
+		ovnNorthAddresses += fmt.Sprintf("%s:%s:%s,", config.OvnDBSchemeTCP, address, "9641")
+		ovnSouthAddresses += fmt.Sprintf("%s:%s:%s,", config.OvnDBSchemeTCP, address, "9642")
+	}
+
+	ovnNorthAddresses = ovnNorthAddresses[0 : len(ovnNorthAddresses)-1]
+	ovnSouthAddresses = ovnSouthAddresses[0 : len(ovnSouthAddresses)-1]
+
+	return ovnNorthAddresses, ovnSouthAddresses, nil
 }

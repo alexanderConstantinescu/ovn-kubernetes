@@ -28,6 +28,7 @@ const (
 	ovsAppctlCommand  = "ovs-appctl"
 	ovnNbctlCommand   = "ovn-nbctl"
 	ovnSbctlCommand   = "ovn-sbctl"
+	ovnCtlCommand     = "ovn-ctl"
 	ipCommand         = "ip"
 	powershellCommand = "powershell"
 	netshCommand      = "netsh"
@@ -83,6 +84,7 @@ type execHelper struct {
 	appctlPath     string
 	nbctlPath      string
 	sbctlPath      string
+	nctlPath       string
 	ipPath         string
 	powershellPath string
 	netshPath      string
@@ -114,6 +116,10 @@ func SetExec(exec kexec.Interface) error {
 		return err
 	}
 	runner.sbctlPath, err = exec.LookPath(ovnSbctlCommand)
+	if err != nil {
+		return err
+	}
+	runner.nctlPath, err = exec.LookPath(ovnCtlCommand)
 	if err != nil {
 		return err
 	}
@@ -182,6 +188,12 @@ func runWithEnvVars(cmdPath string, envVars []string, args ...string) (*bytes.Bu
 // RunOVSOfctl runs a command via ovs-ofctl.
 func RunOVSOfctl(args ...string) (string, string, error) {
 	stdout, stderr, err := run(runner.ofctlPath, args...)
+	return strings.Trim(stdout.String(), "\" \n"), stderr.String(), err
+}
+
+// RunOVNctl runs a command via ovn-ctl.
+func RunOVNctl(args ...string) (string, string, error) {
+	stdout, stderr, err := run(runner.nctlPath, args...)
 	return strings.Trim(stdout.String(), "\" \n"), stderr.String(), err
 }
 
