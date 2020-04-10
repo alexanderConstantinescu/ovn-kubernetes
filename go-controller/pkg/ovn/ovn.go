@@ -63,11 +63,6 @@ type Controller struct {
 	// cluster's east-west traffic.
 	loadbalancerClusterCache map[kapi.Protocol]string
 
-	// For TCP and UDP type traffice, cache OVN load balancer that exists on the
-	// default gateway
-	loadbalancerGWCache map[kapi.Protocol]string
-	defGatewayRouter    string
-
 	// A cache of all logical switches seen by the watcher and their subnets
 	logicalSwitchCache map[string]*net.IPNet
 
@@ -158,7 +153,6 @@ func NewOvnController(kubeClient kubernetes.Interface, wf *factory.WatchFactory,
 		lspMutex:                 &sync.Mutex{},
 		lsMutex:                  &sync.Mutex{},
 		loadbalancerClusterCache: make(map[kapi.Protocol]string),
-		loadbalancerGWCache:      make(map[kapi.Protocol]string),
 		multicastEnabled:         make(map[string]bool),
 		multicastSupport:         config.EnableMulticast,
 		serviceVIPToName:         make(map[ServiceVIPKey]types.NamespacedName),
@@ -626,8 +620,7 @@ func (oc *Controller) WatchNodes() error {
 
 			nodeSubnet, _ := util.ParseNodeHostSubnetAnnotation(node)
 			joinSubnet, _ := util.ParseNodeJoinSubnetAnnotation(node)
-			err := oc.deleteNode(node.Name, nodeSubnet, joinSubnet)
-			if err != nil {
+			if err := oc.deleteNode(node.Name, nodeSubnet, joinSubnet); err != nil {
 				klog.Error(err)
 			}
 			oc.lsMutex.Lock()
@@ -635,14 +628,6 @@ func (oc *Controller) WatchNodes() error {
 			oc.lsMutex.Unlock()
 			mgmtPortFailed.Delete(node.Name)
 			gatewaysFailed.Delete(node.Name)
-			// If this node was serving the external IP load balancer for services, migrate to a new node
-			if oc.defGatewayRouter == util.GWRouterPrefix+node.Name {
-				delete(oc.loadbalancerGWCache, kapi.ProtocolTCP)
-				delete(oc.loadbalancerGWCache, kapi.ProtocolUDP)
-				delete(oc.loadbalancerGWCache, kapi.ProtocolSCTP)
-				oc.defGatewayRouter = ""
-				oc.updateExternalIPsLB()
-			}
 		},
 	}, oc.syncNodes)
 	return err

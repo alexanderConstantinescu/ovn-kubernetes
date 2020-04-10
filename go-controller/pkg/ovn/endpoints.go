@@ -24,7 +24,7 @@ func (ovn *Controller) getLbEndpoints(ep *kapi.Endpoints) map[kapi.Protocol]map[
 		for _, ip := range s.Addresses {
 			for _, port := range s.Ports {
 				var ips []string
-				if _, err := util.ValidateProtocol(port.Protocol); err != nil {
+				if err := util.ValidatePort(port.Protocol, port.Port); err != nil {
 					klog.Errorf("Invalid endpoint port: %s: %v", port.Name, err)
 					continue
 				}
@@ -75,8 +75,7 @@ func (ovn *Controller) AddEndpoints(ep *kapi.Endpoints) error {
 						continue
 					}
 					if util.ServiceTypeHasNodePort(svc) {
-						klog.V(5).Infof("Creating Gateways IP for NodePort: %d, %v", svcPort.NodePort, ips)
-						err = ovn.createGatewaysVIP(svcPort.Protocol, svcPort.NodePort, targetPort, ips)
+						err = ovn.createGatewayNodePortVIPs(svcPort.Protocol, svcPort.NodePort, targetPort, ips)
 						if err != nil {
 							klog.Errorf("Error in creating Node Port for svc %s, node port: %d - %v\n", svc.Name, svcPort.NodePort, err)
 							continue
@@ -98,7 +97,7 @@ func (ovn *Controller) AddEndpoints(ep *kapi.Endpoints) error {
 						}
 						vip := util.JoinHostPortInt32(svc.Spec.ClusterIP, svcPort.Port)
 						ovn.AddServiceVIPToName(vip, svcPort.Protocol, svc.Namespace, svc.Name)
-						ovn.handleExternalIPs(svc, svcPort, ips, targetPort, false)
+						ovn.createGatewayExternalIPVIPs(svc, svcPort, ips, targetPort)
 					}
 				}
 			}
@@ -157,78 +156,6 @@ func (ovn *Controller) handleNodePortLB(node *kapi.Node) error {
 	return nil
 }
 
-// updateExternalIPsLB is used to handle the case where a node is deleted, and the external IP needs to be moved
-// to another GW node
-func (ovn *Controller) updateExternalIPsLB() {
-	namespaces, err := ovn.watchFactory.GetNamespaces()
-	if err != nil {
-		klog.Errorf("failed to get k8s namespaces: %v", err)
-		return
-	}
-	for _, ns := range namespaces {
-		endpoints, err := ovn.watchFactory.GetEndpoints(ns.Name)
-		if err != nil {
-			klog.Errorf("failed to get k8s endpoints: %v", err)
-			continue
-		}
-		for _, ep := range endpoints {
-			svc, err := ovn.watchFactory.GetService(ep.Namespace, ep.Name)
-			if err != nil {
-				continue
-			}
-			if len(svc.Spec.ExternalIPs) == 0 {
-				continue
-			}
-			tcpPortMap := make(map[string]lbEndpoints)
-			udpPortMap := make(map[string]lbEndpoints)
-			sctpPortMap := make(map[string]lbEndpoints)
-			protoPortMap := map[kapi.Protocol]map[string]lbEndpoints{
-				kapi.ProtocolTCP:  tcpPortMap,
-				kapi.ProtocolUDP:  udpPortMap,
-				kapi.ProtocolSCTP: sctpPortMap,
-			}
-			for proto, portMap := range protoPortMap {
-				for svcPortName, lbEps := range portMap {
-					ips := lbEps.IPs
-					targetPort := lbEps.Port
-					for _, svcPort := range svc.Spec.Ports {
-						if svcPort.Protocol == proto && svcPort.Name == svcPortName {
-							ovn.handleExternalIPs(svc, svcPort, ips, targetPort, false)
-						}
-					}
-				}
-			}
-		}
-	}
-}
-
-// handleExternalIPs will take care of updating/adding GW load balancers. If removeLoadBalancerVIP is true,
-// the behavior changes to remove the load balancer VIP for services with external ips
-func (ovn *Controller) handleExternalIPs(svc *kapi.Service, svcPort kapi.ServicePort, ips []string, targetPort int32,
-	removeLoadBalancerVIP bool) {
-	klog.V(5).Infof("handling external IPs for svc %v", svc.Name)
-	if len(svc.Spec.ExternalIPs) == 0 {
-		return
-	}
-	for _, extIP := range svc.Spec.ExternalIPs {
-		lb := ovn.getDefaultGatewayLoadBalancer(svcPort.Protocol)
-		if lb == "" {
-			klog.Warningf("No default gateway found for protocol %s\n\tNote: 'nodeport' flag needs to be enabled for default gateway", svcPort.Protocol)
-			continue
-		}
-		if removeLoadBalancerVIP {
-			vip := util.JoinHostPortInt32(extIP, svcPort.Port)
-			klog.V(5).Infof("Removing external VIP: %s from load balancer: %s", vip, lb)
-			ovn.deleteLoadBalancerVIP(lb, vip)
-		} else {
-			err := ovn.createLoadBalancerVIP(lb, extIP, svcPort.Port, ips, targetPort)
-			if err != nil {
-				klog.Errorf("Error in creating external IP for service: %s, externalIP: %s", svc.Name, extIP)
-			}
-		}
-	}
-}
-
 func (ovn *Controller) deleteEndpoints(ep *kapi.Endpoints) error {
 	klog.V(5).Infof("Deleting endpoints: %s for namespace: %s", ep.Name, ep.Namespace)
 	svc, err := ovn.watchFactory.GetService(ep.Namespace, ep.Name)
@@ -259,6 +186,10 @@ func (ovn *Controller) deleteEndpoints(ep *kapi.Endpoints) error {
 			klog.V(5).Infof("Reject ACL created for load balancer: %s, %s", lb, aclUUID)
 		}
 
+		if util.ServiceTypeHasNodePort(svc) {
+			ovn.deleteGatewayNodePortVIPs(svcPort.Protocol, svcPort.Port)
+		}
+
 		// clear endpoints from the LB
 		err := ovn.configureLoadBalancer(lb, svc.Spec.ClusterIP, svcPort.Port, nil)
 		if err != nil {
@@ -266,6 +197,7 @@ func (ovn *Controller) deleteEndpoints(ep *kapi.Endpoints) error {
 		}
 		vip := util.JoinHostPortInt32(svc.Spec.ClusterIP, svcPort.Port)
 		ovn.removeServiceEndpoints(lb, vip)
+		ovn.deleteGatewayExternalIPVIPs(svc, svcPort)
 	}
 	return nil
 }

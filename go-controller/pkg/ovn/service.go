@@ -43,38 +43,33 @@ func (ovn *Controller) syncServices(services []interface{}) {
 			continue
 		}
 
-		if !util.IsClusterIPSet(service) {
-			klog.V(5).Infof("Skipping service %s due to clusterIP = %q",
-				service.Name, service.Spec.ClusterIP)
-			continue
-		}
-
 		for _, svcPort := range service.Spec.Ports {
-			protocol, err := util.ValidateProtocol(svcPort.Protocol)
-			if err != nil {
+			if err := util.ValidatePort(svcPort.Protocol, svcPort.Port); err != nil {
 				klog.Errorf("Error validating protocol for port %s: %v", svcPort.Name, err)
 				continue
 			}
-
-			if util.ServiceTypeHasNodePort(service) {
-				port := fmt.Sprintf("%d", svcPort.NodePort)
-				nodeportServices[protocol] = append(nodeportServices[protocol], port)
-			}
-
-			if svcPort.Port == 0 {
-				continue
-			}
-
-			key := util.JoinHostPortInt32(service.Spec.ClusterIP, svcPort.Port)
-			clusterServices[protocol] = append(clusterServices[protocol], key)
 
 			if len(service.Spec.ExternalIPs) == 0 {
 				continue
 			}
 			for _, extIP := range service.Spec.ExternalIPs {
 				key := util.JoinHostPortInt32(extIP, svcPort.Port)
-				lbServices[protocol] = append(lbServices[protocol], key)
+				lbServices[svcPort.Protocol] = append(lbServices[svcPort.Protocol], key)
+
 			}
+
+			if !util.IsClusterIPSet(service) {
+				klog.V(5).Infof("Skipping service %s due to clusterIP = %q", service.Name, service.Spec.ClusterIP)
+				break
+			}
+
+			if util.ServiceTypeHasNodePort(service) {
+				port := fmt.Sprintf("%d", svcPort.NodePort)
+				nodeportServices[svcPort.Protocol] = append(nodeportServices[svcPort.Protocol], port)
+			}
+
+			key := util.JoinHostPortInt32(service.Spec.ClusterIP, svcPort.Port)
+			clusterServices[svcPort.Protocol] = append(clusterServices[svcPort.Protocol], key)
 		}
 	}
 
@@ -88,7 +83,7 @@ func (ovn *Controller) syncServices(services []interface{}) {
 			continue
 		}
 
-		loadBalancerVIPS, err := ovn.getLoadBalancerVIPS(loadBalancer)
+		loadBalancerVIPS, err := ovn.getLoadBalancerVIPs(loadBalancer)
 		if err != nil {
 			klog.Errorf("failed to get load-balancer vips for %s (%v)",
 				loadBalancer, err)
@@ -107,55 +102,44 @@ func (ovn *Controller) syncServices(services []interface{}) {
 		}
 	}
 
-	// For each gateway, remove any VIP that does not exist in
-	// 'nodeportServices'.
-	gateways, stderr, err := ovn.getOvnGateways()
-	if err != nil {
-		klog.Errorf("failed to get ovn gateways. Not syncing nodeport"+
-			"stdout: %q, stderr: %q (%v)", gateways, stderr, err)
-		return
-	}
-
-	for _, gateway := range gateways {
-		for _, protocol := range []kapi.Protocol{kapi.ProtocolTCP, kapi.ProtocolUDP, kapi.ProtocolSCTP} {
-			loadBalancer, err := ovn.getGatewayLoadBalancer(gateway, protocol)
-			if err != nil {
-				klog.Errorf("physical gateway %s does not have "+
-					"load_balancer (%v)", gateway, err)
-				continue
+	ovn.forEachGatewayLB([]kapi.Protocol{kapi.ProtocolTCP, kapi.ProtocolUDP, kapi.ProtocolSCTP},
+		func(gateway, loadBalancer string, protocol kapi.Protocol) error {
+			loadBalancerVIPS, err := ovn.getLoadBalancerVIPs(loadBalancer)
+			if err != nil || loadBalancerVIPS == nil {
+				klog.Errorf("failed to get load-balancer vips for %s (%v)", loadBalancer, err)
+				return nil
 			}
-			if loadBalancer == "" {
-				continue
-			}
-
-			loadBalancerVIPS, err := ovn.getLoadBalancerVIPS(loadBalancer)
-			if err != nil {
-				klog.Errorf("failed to get load-balancer vips for %s (%v)",
-					loadBalancer, err)
-				continue
-			}
-			if loadBalancerVIPS == nil {
-				continue
-			}
-
 			for vip := range loadBalancerVIPS {
 				_, port, err := net.SplitHostPort(vip)
 				if err != nil {
 					// In a OVN load-balancer, we should always have vip:port.
 					// In the unlikely event that it is not the case, skip it.
-					klog.Errorf("failed to split %s to vip and port (%v)",
-						vip, err)
+					klog.Errorf("failed to split %s to vip and port (%v)", vip, err)
 					continue
 				}
-
 				if !stringSliceMembership(nodeportServices[protocol], port) && !stringSliceMembership(lbServices[protocol], vip) {
-					klog.V(5).Infof("Deleting stale nodeport vip %s in "+
-						"loadbalancer %s", vip, loadBalancer)
+					klog.V(5).Infof("Deleting stale nodeport vip %s in loadbalancer %s", vip, loadBalancer)
 					ovn.deleteLoadBalancerVIP(loadBalancer, vip)
 				}
 			}
-		}
+			return nil
+		})
+}
+
+func (ovn *Controller) createServiceLoadBalancer(loadBalancerIP, loadBalancer string, port int32, protocol kapi.Protocol) error {
+	// With the physical_ip:port as the VIP, add an entry in 'load_balancer'.
+	vip := util.JoinHostPortInt32(loadBalancerIP, port)
+	// Skip creating LB if endpoints watcher already did it
+	if _, hasEps := ovn.getServiceLBInfo(loadBalancer, vip); hasEps {
+		klog.V(5).Infof("Load Balancer already configured for %s, %s", loadBalancer, vip)
+		return nil
 	}
+	aclUUID, err := ovn.createLoadBalancerRejectACL(loadBalancer, loadBalancerIP, port, protocol)
+	if err != nil {
+		return fmt.Errorf("failed to create service ACL")
+	}
+	klog.V(5).Infof("Service Reject ACL created for physical gateway: %s", aclUUID)
+	return nil
 }
 
 func (ovn *Controller) createService(service *kapi.Service) error {
@@ -175,16 +159,12 @@ func (ovn *Controller) createService(service *kapi.Service) error {
 		} else {
 			port = svcPort.Port
 		}
-		if port == 0 {
-			continue
-		}
 
-		protocol, err := util.ValidateProtocol(svcPort.Protocol)
-		if err != nil {
+		if err := util.ValidatePort(svcPort.Protocol, port); err != nil {
 			return fmt.Errorf("error validating protocol for port %s: %v", svcPort.Name, err)
 		}
 
-		if !ovn.SCTPSupport && protocol == kapi.ProtocolSCTP {
+		if !ovn.SCTPSupport && svcPort.Protocol == kapi.ProtocolSCTP {
 			ref, err := reference.GetReference(scheme.Scheme, service)
 			if err != nil {
 				klog.Errorf("Could not get reference for pod %v: %v\n", service.Name, err)
@@ -192,91 +172,39 @@ func (ovn *Controller) createService(service *kapi.Service) error {
 				ovn.recorder.Event(ref, kapi.EventTypeWarning, "Unsupported protocol error",
 					"SCTP protocol is unsupported by this version of OVN")
 			}
-
 			return fmt.Errorf("invalid service port %s: SCTP is unsupported by this version of OVN", svcPort.Name)
 		}
 
-		if util.ServiceTypeHasNodePort(service) {
+		if util.ServiceTypeHasNodePort(service) && ovn.svcQualifiesForReject(service) {
 			// Each gateway has a separate load-balancer for N/S traffic
-
-			physicalGateways, _, err := ovn.getOvnGateways()
+			err := ovn.forEachGatewayLB([]kapi.Protocol{svcPort.Protocol}, func(gateway, loadBalancer string, protocol kapi.Protocol) error {
+				physicalIP, err := ovn.getGatewayPhysicalIP(gateway)
+				if err != nil {
+					return fmt.Errorf("physical gateway %s does not have physical ip (%v)", gateway, err)
+				}
+				return ovn.createServiceLoadBalancer(physicalIP, loadBalancer, port, protocol)
+			})
 			if err != nil {
 				return err
 			}
-
-			for _, physicalGateway := range physicalGateways {
-				loadBalancer, err := ovn.getGatewayLoadBalancer(physicalGateway, protocol)
-				if err != nil {
-					klog.Errorf("physical gateway %s does not have load_balancer "+
-						"(%v)", physicalGateway, err)
-					continue
-				}
-				if loadBalancer == "" {
-					continue
-				}
-				physicalIP, err := ovn.getGatewayPhysicalIP(physicalGateway)
-				if err != nil {
-					klog.Errorf("physical gateway %s does not have physical ip (%v)",
-						physicalGateway, err)
-					continue
-				}
-				// With the physical_ip:port as the VIP, add an entry in
-				// 'load_balancer'.
-				vip := util.JoinHostPortInt32(physicalIP, port)
-				// Skip creating LB if endpoints watcher already did it
-				if _, hasEps := ovn.getServiceLBInfo(loadBalancer, vip); hasEps {
-					klog.V(5).Infof("Load Balancer already configured for %s, %s", loadBalancer, vip)
-				} else if ovn.svcQualifiesForReject(service) {
-					aclUUID, err := ovn.createLoadBalancerRejectACL(loadBalancer, physicalIP, port, protocol)
-					if err != nil {
-						return fmt.Errorf("failed to create service ACL")
-					}
-					klog.V(5).Infof("Service Reject ACL created for physical gateway: %s", aclUUID)
-				}
-			}
 		}
-		if util.ServiceTypeHasClusterIP(service) {
-			loadBalancer, err := ovn.getLoadBalancer(protocol)
+		if util.ServiceTypeHasClusterIP(service) && ovn.svcQualifiesForReject(service) {
+			loadBalancer, err := ovn.getLoadBalancer(svcPort.Protocol)
 			if err != nil {
-				klog.Errorf("Failed to get load-balancer for %s (%v)",
-					protocol, err)
-				break
+				return fmt.Errorf("Failed to get load-balancer for %s (%v)", svcPort.Protocol, err)
 			}
-			if ovn.svcQualifiesForReject(service) {
-				vip := util.JoinHostPortInt32(service.Spec.ClusterIP, svcPort.Port)
-				// Skip creating LB if endpoints watcher already did it
-				if _, hasEps := ovn.getServiceLBInfo(loadBalancer, vip); hasEps {
-					klog.V(5).Infof("Load Balancer already configured for %s, %s", loadBalancer, vip)
-				} else {
-					aclUUID, err := ovn.createLoadBalancerRejectACL(loadBalancer, service.Spec.ClusterIP,
-						svcPort.Port, protocol)
-					if err != nil {
-						return fmt.Errorf("failed to create service ACL")
-					} else {
-						klog.V(5).Infof("Service Reject ACL created for cluster IP: %s", aclUUID)
-					}
-				}
-				for _, extIP := range service.Spec.ExternalIPs {
-					exLoadBalancer := ovn.getDefaultGatewayLoadBalancer(svcPort.Protocol)
-					if exLoadBalancer == "" {
-						klog.Warningf("No default gateway found for protocol %s\n\tNote: 'nodeport'"+
-							"flag needs to be enabled for default gateway", svcPort.Protocol)
-						continue
-					}
-					vip := util.JoinHostPortInt32(extIP, svcPort.Port)
-					// Skip creating LB if endpoints watcher already did it
-					if _, hasEps := ovn.getServiceLBInfo(loadBalancer, vip); hasEps {
-						klog.V(5).Infof("Load Balancer already configured for %s, %s", loadBalancer, vip)
-					} else {
-						aclUUID, err := ovn.createLoadBalancerRejectACL(exLoadBalancer, extIP, svcPort.Port, protocol)
-						if err != nil {
-							return fmt.Errorf("failed to create service ACL for external IP")
-						} else {
-							klog.V(5).Infof("Service Reject ACL created for external IP: %s", aclUUID)
-						}
-					}
+			if err := ovn.createServiceLoadBalancer(service.Spec.ClusterIP, loadBalancer, port, svcPort.Protocol); err != nil {
+				return err
+			}
+			for _, extIP := range service.Spec.ExternalIPs {
+				err := ovn.forEachGatewayLB([]kapi.Protocol{svcPort.Protocol}, func(gateway, loadBalancer string, protocol kapi.Protocol) error {
+					return ovn.createServiceLoadBalancer(extIP, loadBalancer, port, protocol)
+				})
+				if err != nil {
+					return err
 				}
 			}
+
 		}
 	}
 	return nil
@@ -295,9 +223,6 @@ func (ovn *Controller) deleteService(service *kapi.Service) {
 	if !util.IsClusterIPSet(service) || len(service.Spec.Ports) == 0 {
 		return
 	}
-
-	ips := make([]string, 0)
-
 	for _, svcPort := range service.Spec.Ports {
 		var port int32
 		if util.ServiceTypeHasNodePort(service) {
@@ -305,33 +230,23 @@ func (ovn *Controller) deleteService(service *kapi.Service) {
 		} else {
 			port = svcPort.Port
 		}
-		if port == 0 {
-			continue
-		}
 
-		protocol, err := util.ValidateProtocol(svcPort.Protocol)
-		if err != nil {
+		if err := util.ValidatePort(svcPort.Protocol, port); err != nil {
 			klog.Errorf("Skipping delete for service port %s: %v", svcPort.Name, err)
 			continue
 		}
 
-		// targetPort can be anything, the deletion logic does not use it
-		var targetPort int32
 		if util.ServiceTypeHasNodePort(service) {
-			// Delete the 'NodePort' service from a load-balancer instantiated in gateways.
-			ovn.deleteGatewaysVIP(protocol, port)
+			ovn.deleteGatewayNodePortVIPs(svcPort.Protocol, port)
 		}
-		if util.ServiceTypeHasClusterIP(service) {
-			loadBalancer, err := ovn.getLoadBalancer(protocol)
-			if err != nil {
-				klog.Errorf("Failed to get load-balancer for %s (%v)",
-					protocol, err)
-				break
-			}
-			vip := util.JoinHostPortInt32(service.Spec.ClusterIP, svcPort.Port)
-			ovn.deleteLoadBalancerVIP(loadBalancer, vip)
-			ovn.handleExternalIPs(service, svcPort, ips, targetPort, true)
+		loadBalancer, err := ovn.getLoadBalancer(svcPort.Protocol)
+		if err != nil {
+			klog.Errorf("Failed to get load-balancer for %s (%v)", svcPort.Protocol, err)
+			break
 		}
+		vip := util.JoinHostPortInt32(service.Spec.ClusterIP, svcPort.Port)
+		ovn.deleteLoadBalancerVIP(loadBalancer, vip)
+		ovn.deleteGatewayExternalIPVIPs(service, svcPort)
 	}
 }
 

@@ -1,14 +1,12 @@
 package util
 
 import (
-	"bytes"
 	"fmt"
-	kapi "k8s.io/api/core/v1"
 	"net"
-	"sort"
 	"strings"
 
-	"k8s.io/klog"
+	kapi "k8s.io/api/core/v1"
+
 	utilnet "k8s.io/utils/net"
 )
 
@@ -29,55 +27,6 @@ const (
 // how the distributed router is named.
 func GetK8sClusterRouter() string {
 	return OvnClusterRouter
-}
-
-// GetDefaultGatewayRouterIP returns the first gateway logical router name
-// and IP address as listed in the OVN database
-func GetDefaultGatewayRouterIP() (string, net.IP, error) {
-	stdout, stderr, err := RunOVNNbctl("--data=bare", "--format=table",
-		"--no-heading", "--columns=name,options", "find", "logical_router",
-		"options:lb_force_snat_ip!=-")
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to get logical routers, stdout: %q, "+
-			"stderr: %q, err: %v", stdout, stderr, err)
-	}
-	// Convert \r\n to \n to support Windows line endings
-	stdout = strings.Replace(strings.TrimSpace(stdout), "\r\n", "\n", -1)
-	gatewayRouters := strings.Split(stdout, "\n")
-	if len(gatewayRouters) == 0 {
-		return "", nil, fmt.Errorf("failed to get default gateway router (no routers found)")
-	}
-
-	type gwRouter struct {
-		name string
-		ip   net.IP
-	}
-
-	// Get the list of all gateway router names and IPs
-	routers := make([]gwRouter, 0, len(gatewayRouters))
-	for _, gwRouterLine := range gatewayRouters {
-		parts := strings.Fields(gwRouterLine)
-		for _, p := range parts {
-			const forceTag string = "lb_force_snat_ip="
-			if strings.HasPrefix(p, forceTag) {
-				ipStr := p[len(forceTag):]
-				if ip := net.ParseIP(ipStr); ip != nil {
-					routers = append(routers, gwRouter{parts[0], ip})
-				} else {
-					klog.Warningf("failed to parse gateway router %q IP %q", parts[0], ipStr)
-				}
-			}
-		}
-	}
-	if len(routers) == 0 {
-		return "", nil, fmt.Errorf("failed to parse gateway routers")
-	}
-
-	// Stably sort the list
-	sort.Slice(routers, func(i, j int) bool {
-		return bytes.Compare(routers[i].ip, routers[j].ip) < 0
-	})
-	return routers[0].name, routers[0].ip, nil
 }
 
 // getGatewayLoadBalancers find TCP, SCTP, UDP load-balancers from gateway router.

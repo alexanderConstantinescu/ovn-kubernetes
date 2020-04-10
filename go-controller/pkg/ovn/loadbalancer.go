@@ -44,29 +44,7 @@ func (ovn *Controller) getLoadBalancer(protocol kapi.Protocol) (string,
 	return out, nil
 }
 
-func (ovn *Controller) getDefaultGatewayLoadBalancer(protocol kapi.Protocol) string {
-	if outStr, ok := ovn.loadbalancerGWCache[protocol]; ok {
-		return outStr
-	}
-
-	gw, _, err := util.GetDefaultGatewayRouterIP()
-	if err != nil {
-		klog.Errorf(err.Error())
-		return ""
-	}
-
-	externalIDKey := string(protocol) + "_lb_gateway_router"
-	lb, _, _ := util.RunOVNNbctl("--data=bare",
-		"--no-heading", "--columns=_uuid", "find", "load_balancer",
-		"external_ids:"+externalIDKey+"="+gw)
-	if len(lb) != 0 {
-		ovn.loadbalancerGWCache[protocol] = lb
-		ovn.defGatewayRouter = gw
-	}
-	return lb
-}
-
-func (ovn *Controller) getLoadBalancerVIPS(
+func (ovn *Controller) getLoadBalancerVIPs(
 	loadBalancer string) (map[string]interface{}, error) {
 	outStr, _, err := util.RunOVNNbctl("--data=bare", "--no-heading",
 		"get", "load_balancer", loadBalancer, "vips")
@@ -90,19 +68,19 @@ func (ovn *Controller) getLoadBalancerVIPS(
 }
 
 // deleteLoadBalancerVIP removes the VIP as well as any reject ACLs associated to the LB
-func (ovn *Controller) deleteLoadBalancerVIP(loadBalancer, vip string) {
+func (ovn *Controller) deleteLoadBalancerVIP(loadBalancer, vip string) error {
 	vipQuotes := fmt.Sprintf("\"%s\"", vip)
 	stdout, stderr, err := util.RunOVNNbctl("--if-exists", "remove", "load_balancer", loadBalancer, "vips", vipQuotes)
 	if err != nil {
-		klog.Errorf("Error in deleting load balancer vip %s for %s"+
+		// if we hit an error and fail to remove load balancer, we skip removing the rejectACL
+		return fmt.Errorf("Error in deleting load balancer vip %s for %s"+
 			"stdout: %q, stderr: %q, error: %v",
 			vip, loadBalancer, stdout, stderr, err)
-		// if we hit an error and fail to remove load balancer, we skip removing the rejectACL
-		return
 	}
 	ovn.removeServiceEndpoints(loadBalancer, vip)
 	ovn.deleteLoadBalancerRejectACL(loadBalancer, vip)
 	ovn.removeServiceLB(loadBalancer, vip)
+	return nil
 }
 
 func (ovn *Controller) configureLoadBalancer(lb, serviceIP string, port int32, endpoints []string) error {
