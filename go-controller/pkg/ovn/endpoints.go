@@ -42,7 +42,7 @@ func (ovn *Controller) getLbEndpoints(ep *kapi.Endpoints) map[kapi.Protocol]map[
 }
 
 // AddEndpoints adds endpoints and creates corresponding resources in OVN
-func (ovn *Controller) AddEndpoints(ep *kapi.Endpoints) error {
+func (ovn *Controller) AddEndpoints(ep *kapi.Endpoints) {
 	klog.V(5).Infof("Adding endpoints: %s for namespace: %s", ep.Name, ep.Namespace)
 	// get service
 	// TODO: cache the service
@@ -52,58 +52,53 @@ func (ovn *Controller) AddEndpoints(ep *kapi.Endpoints) error {
 		// without a corresponding service.
 		klog.V(5).Infof("no service found for endpoint %s in namespace %s",
 			ep.Name, ep.Namespace)
-		return nil
+		return
 	}
 	if !util.IsClusterIPSet(svc) {
 		klog.V(5).Infof("Skipping service %s due to clusterIP = %q",
 			svc.Name, svc.Spec.ClusterIP)
-		return nil
+		return
 	}
 	klog.V(5).Infof("Matching service %s found for ep: %s, with cluster IP: %s", svc.Name, ep.Name,
 		svc.Spec.ClusterIP)
 
 	protoPortMap := ovn.getLbEndpoints(ep)
 	klog.V(5).Infof("Matching service %s ports: %v", svc.Name, svc.Spec.Ports)
-	for proto, portMap := range protoPortMap {
-		for svcPortName, lbEps := range portMap {
-			ips := lbEps.IPs
-			targetPort := lbEps.Port
-			for _, svcPort := range svc.Spec.Ports {
-				if svcPort.Protocol == proto && svcPort.Name == svcPortName {
-					if !ovn.SCTPSupport && proto == kapi.ProtocolSCTP {
-						klog.Errorf("Rejecting endpoint creation for unsupported SCTP protocol: %s, %s", ep.Namespace, ep.Name)
+	for _, svcPort := range svc.Spec.Ports {
+		if portMap, ok := protoPortMap[svcPort.Protocol]; ok {
+			if lbEps, ok := portMap[svcPort.Name]; ok {
+				if !ovn.SCTPSupport && svcPort.Protocol == kapi.ProtocolSCTP {
+					klog.Errorf("Rejecting endpoint creation for unsupported SCTP protocol: %s, %s", ep.Namespace, ep.Name)
+					continue
+				}
+				if util.ServiceTypeHasNodePort(svc) {
+					err = ovn.createGatewayNodePortVIPs(svcPort.Protocol, svcPort.NodePort, lbEps.Port, lbEps.IPs)
+					if err != nil {
+						klog.Errorf("Error in creating Node Port for svc %s, node port: %d - %v\n", svc.Name, svcPort.NodePort, err)
 						continue
 					}
-					if util.ServiceTypeHasNodePort(svc) {
-						err = ovn.createGatewayNodePortVIPs(svcPort.Protocol, svcPort.NodePort, targetPort, ips)
-						if err != nil {
-							klog.Errorf("Error in creating Node Port for svc %s, node port: %d - %v\n", svc.Name, svcPort.NodePort, err)
-							continue
-						}
+				}
+				if util.ServiceTypeHasClusterIP(svc) {
+					var loadBalancer string
+					loadBalancer, err = ovn.getLoadBalancer(svcPort.Protocol)
+					if err != nil {
+						klog.Errorf("Failed to get loadbalancer for %s (%v)",
+							svcPort.Protocol, err)
+						continue
 					}
-					if util.ServiceTypeHasClusterIP(svc) {
-						var loadBalancer string
-						loadBalancer, err = ovn.getLoadBalancer(svcPort.Protocol)
-						if err != nil {
-							klog.Errorf("Failed to get loadbalancer for %s (%v)",
-								svcPort.Protocol, err)
-							continue
-						}
-						err = ovn.createLoadBalancerVIP(loadBalancer,
-							svc.Spec.ClusterIP, svcPort.Port, ips, targetPort)
-						if err != nil {
-							klog.Errorf("Error in creating Cluster IP for svc %s, target port: %d - %v\n", svc.Name, targetPort, err)
-							continue
-						}
-						vip := util.JoinHostPortInt32(svc.Spec.ClusterIP, svcPort.Port)
-						ovn.AddServiceVIPToName(vip, svcPort.Protocol, svc.Namespace, svc.Name)
-						ovn.createGatewayExternalIPVIPs(svc, svcPort, ips, targetPort)
+					err = ovn.createLoadBalancerVIP(loadBalancer,
+						svc.Spec.ClusterIP, svcPort.Port, lbEps.IPs, lbEps.Port)
+					if err != nil {
+						klog.Errorf("Error in creating Cluster IP for svc %s, target port: %d - %v\n", svc.Name, lbEps.Port, err)
+						continue
 					}
+					vip := util.JoinHostPortInt32(svc.Spec.ClusterIP, svcPort.Port)
+					ovn.AddServiceVIPToName(vip, svcPort.Protocol, svc.Namespace, svc.Name)
+					ovn.createGatewayExternalIPVIPs(svc, svcPort, lbEps.IPs, lbEps.Port)
 				}
 			}
 		}
 	}
-	return nil
 }
 
 func (ovn *Controller) handleNodePortLB(node *kapi.Node) error {
@@ -131,22 +126,17 @@ func (ovn *Controller) handleNodePortLB(node *kapi.Node) error {
 				continue
 			}
 			protoPortMap := ovn.getLbEndpoints(ep)
-			for proto, portMap := range protoPortMap {
-				for svcPortName, lbEps := range portMap {
-					ips := lbEps.IPs
-					targetPort := lbEps.Port
-					for _, svcPort := range svc.Spec.Ports {
-						if svcPort.Protocol == proto && svcPort.Name == svcPortName {
-							k8sNSLb, _ := ovn.getGatewayLoadBalancer(physicalGateway, proto)
-							if k8sNSLb == "" {
-								return fmt.Errorf("%s load balancer for node %q does not yet exist",
-									proto, node.Name)
-							}
-							err = ovn.createLoadBalancerVIP(k8sNSLb, physicalIP, svcPort.NodePort, ips, targetPort)
-							if err != nil {
-								klog.Errorf("failed to create VIP in load balancer %s - %v", k8sNSLb, err)
-								continue
-							}
+			for _, svcPort := range svc.Spec.Ports {
+				if portMap, ok := protoPortMap[svcPort.Protocol]; ok {
+					if lbEps, ok := portMap[svcPort.Name]; ok {
+						k8sNSLb, _ := ovn.getGatewayLoadBalancer(physicalGateway, svcPort.Protocol)
+						if k8sNSLb == "" {
+							return fmt.Errorf("%s load balancer for node %q does not yet exist", svcPort.Protocol, node.Name)
+						}
+						err = ovn.createLoadBalancerVIP(k8sNSLb, physicalIP, svcPort.NodePort, lbEps.IPs, lbEps.Port)
+						if err != nil {
+							klog.Errorf("failed to create VIP in load balancer %s - %v", k8sNSLb, err)
+							continue
 						}
 					}
 				}
@@ -156,7 +146,7 @@ func (ovn *Controller) handleNodePortLB(node *kapi.Node) error {
 	return nil
 }
 
-func (ovn *Controller) deleteEndpoints(ep *kapi.Endpoints) error {
+func (ovn *Controller) deleteEndpoints(ep *kapi.Endpoints) {
 	klog.V(5).Infof("Deleting endpoints: %s for namespace: %s", ep.Name, ep.Namespace)
 	svc, err := ovn.watchFactory.GetService(ep.Namespace, ep.Name)
 	if err != nil {
@@ -164,10 +154,10 @@ func (ovn *Controller) deleteEndpoints(ep *kapi.Endpoints) error {
 		// you will get endpoint delete event and the call to fetch service
 		// will fail.
 		klog.V(5).Infof("no service found for endpoint %s in namespace %s", ep.Name, ep.Namespace)
-		return nil
+		return
 	}
 	if !util.IsClusterIPSet(svc) {
-		return nil
+		return
 	}
 	for _, svcPort := range svc.Spec.Ports {
 		var lb string
@@ -199,5 +189,4 @@ func (ovn *Controller) deleteEndpoints(ep *kapi.Endpoints) error {
 		ovn.removeServiceEndpoints(lb, vip)
 		ovn.deleteGatewayExternalIPVIPs(svc, svcPort)
 	}
-	return nil
 }

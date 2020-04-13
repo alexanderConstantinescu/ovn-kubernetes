@@ -441,10 +441,7 @@ func (oc *Controller) WatchEndpoints() error {
 	_, err := oc.watchFactory.AddEndpointsHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			ep := obj.(*kapi.Endpoints)
-			err := oc.AddEndpoints(ep)
-			if err != nil {
-				klog.Errorf("Error in adding load balancer: %v", err)
-			}
+			oc.AddEndpoints(ep)
 		},
 		UpdateFunc: func(old, new interface{}) {
 			epNew := new.(*kapi.Endpoints)
@@ -453,23 +450,15 @@ func (oc *Controller) WatchEndpoints() error {
 				return
 			}
 			if len(epNew.Subsets) == 0 {
-				err := oc.deleteEndpoints(epNew)
-				if err != nil {
-					klog.Errorf("Error in deleting endpoints - %v", err)
-				}
+				oc.deleteEndpoints(epNew)
 			} else {
-				err := oc.AddEndpoints(epNew)
-				if err != nil {
-					klog.Errorf("Error in modifying endpoints: %v", err)
-				}
+				oc.AddEndpoints(epNew)
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
 			ep := obj.(*kapi.Endpoints)
-			err := oc.deleteEndpoints(ep)
-			if err != nil {
-				klog.Errorf("Error in deleting endpoints - %v", err)
-			}
+			oc.deleteEndpoints(ep)
+
 		},
 	}, nil)
 	return err
