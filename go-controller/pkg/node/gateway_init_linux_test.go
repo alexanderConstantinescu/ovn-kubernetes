@@ -11,6 +11,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/record"
 
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/factory"
@@ -26,31 +27,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
-
-func addNodeportLBs(fexec *ovntest.FakeExec, nodeName, tcpLBUUID, udpLBUUID, sctpLBUUID string) {
-	fexec.AddFakeCmdsNoOutputNoError([]string{
-		"ovn-nbctl --timeout=15 --data=bare --no-heading --columns=_uuid find load_balancer external_ids:TCP_lb_gateway_router=" + util.GWRouterPrefix + nodeName,
-		"ovn-nbctl --timeout=15 --data=bare --no-heading --columns=_uuid find load_balancer external_ids:UDP_lb_gateway_router=" + util.GWRouterPrefix + nodeName,
-		"ovn-nbctl --timeout=15 --data=bare --no-heading --columns=_uuid find load_balancer external_ids:SCTP_lb_gateway_router=" + util.GWRouterPrefix + nodeName,
-	})
-	fexec.AddFakeCmd(&ovntest.ExpectedCmd{
-		Cmd:    "ovn-nbctl --timeout=15 -- create load_balancer external_ids:TCP_lb_gateway_router=" + util.GWRouterPrefix + nodeName + " protocol=tcp",
-		Output: tcpLBUUID,
-	})
-	fexec.AddFakeCmd(&ovntest.ExpectedCmd{
-		Cmd:    "ovn-nbctl --timeout=15 -- create load_balancer external_ids:UDP_lb_gateway_router=" + util.GWRouterPrefix + nodeName + " protocol=udp",
-		Output: udpLBUUID,
-	})
-	fexec.AddFakeCmd(&ovntest.ExpectedCmd{
-		Cmd:    "ovn-nbctl --timeout=15 -- create load_balancer external_ids:SCTP_lb_gateway_router=" + util.GWRouterPrefix + nodeName + " protocol=sctp",
-		Output: sctpLBUUID,
-	})
-	fexec.AddFakeCmdsNoOutputNoError([]string{
-		"ovn-nbctl --timeout=15 set logical_router " + util.GWRouterPrefix + nodeName + " load_balancer=" + tcpLBUUID,
-		"ovn-nbctl --timeout=15 add logical_router " + util.GWRouterPrefix + nodeName + " load_balancer " + udpLBUUID,
-		"ovn-nbctl --timeout=15 add logical_router " + util.GWRouterPrefix + nodeName + " load_balancer " + sctpLBUUID,
-	})
-}
 
 func shareGatewayInterfaceTest(app *cli.App, testNS ns.NetNS,
 	eth0Name, eth0MAC, eth0IP, eth0GWIP, eth0CIDR string, gatewayVLANID uint) {
@@ -175,7 +151,7 @@ cookie=0x0, duration=8366.597s, table=1, n_packets=10641, n_bytes=10370087, prio
 		Expect(err).NotTo(HaveOccurred())
 		defer close(stop)
 
-		n := NewNode(nil, wf, existingNode.Name, stop)
+		n := NewNode(nil, wf, existingNode.Name, stop, record.NewFakeRecorder(0))
 
 		ipt, err := util.NewFakeWithProtocol(iptables.ProtocolIPv4)
 		Expect(err).NotTo(HaveOccurred())
@@ -242,8 +218,13 @@ cookie=0x0, duration=8366.597s, table=1, n_packets=10641, n_bytes=10370087, prio
 }
 
 var _ = Describe("Gateway Init Operations", func() {
-	var app *cli.App
-	var testNS ns.NetNS
+
+	var (
+		testNS      ns.NetNS
+		app         *cli.App
+		fakeOvnNode *FakeOVNNode
+		fexec       *ovntest.FakeExec
+	)
 
 	BeforeEach(func() {
 		var err error
@@ -256,6 +237,9 @@ var _ = Describe("Gateway Init Operations", func() {
 		app = cli.NewApp()
 		app.Name = "test"
 		app.Flags = config.Flags
+
+		fexec = ovntest.NewFakeExec()
+		fakeOvnNode = NewFakeOVNNode(fexec)
 
 		// Set up a fake br-local & LocalnetGatewayNextHopPort
 		testNS, err = testutils.NewNS()
@@ -294,8 +278,8 @@ var _ = Describe("Gateway Init Operations", func() {
 				lrpMAC        string = "00:00:00:05:46:c3"
 				brLocalnetMAC string = "11:22:33:44:55:66"
 				lrpIP         string = "100.64.0.3"
-				brNextHopIp   string = "169.254.33.1"
-				brNextHopCIDR string = brNextHopIp + "/24"
+				brNextHopIP   string = "169.254.33.1"
+				brNextHopCIDR string = brNextHopIP + "/24"
 				systemID      string = "cb9ec8fa-b409-4ef3-9f42-d9283c47aac6"
 				tcpLBUUID     string = "d2e858b2-cb5a-441b-a670-ed450f79a91f"
 				udpLBUUID     string = "12832f14-eb0f-44d4-b8db-4cccbc73c792"
@@ -306,7 +290,6 @@ var _ = Describe("Gateway Init Operations", func() {
 				clusterCIDR   string = clusterIPNet + "/16"
 			)
 
-			fexec := ovntest.NewFakeExec()
 			fexec.AddFakeCmdsNoOutputNoError([]string{
 				"ovs-vsctl --timeout=15 --may-exist add-br br-local",
 			})
@@ -324,30 +307,36 @@ var _ = Describe("Gateway Init Operations", func() {
 				Cmd:    "ovs-vsctl --timeout=15 --if-exists get Open_vSwitch . external_ids:system-id",
 				Output: systemID,
 			})
-
-			err := util.SetExec(fexec)
-			Expect(err).NotTo(HaveOccurred())
-
-			_, err = config.InitConfig(ctx, fexec, nil)
-			Expect(err).NotTo(HaveOccurred())
+			fexec.AddFakeCmd(&ovntest.ExpectedCmd{
+				Cmd: "ip rule",
+				Output: "0:	from all lookup local\n32766:	from all lookup main\n32767:	from all lookup default\n",
+			})
+			fexec.AddFakeCmdsNoOutputNoError([]string{
+				"ip rule add from all table " + localnetGatwayExternalIDTable,
+			})
+			fexec.AddFakeCmdsNoOutputNoError([]string{
+				"ip route list table " + localnetGatwayExternalIDTable,
+			})
 
 			existingNode := v1.Node{ObjectMeta: metav1.ObjectMeta{
 				Name: nodeName,
 			}}
-			fakeClient := fake.NewSimpleClientset(&v1.NodeList{
-				Items: []v1.Node{existingNode},
-			})
-			stop := make(chan struct{})
-			wf, err := factory.NewWatchFactory(fakeClient, stop)
-			Expect(err).NotTo(HaveOccurred())
-			defer close(stop)
+
+			fakeOvnNode.start(ctx,
+				&v1.NodeList{
+					Items: []v1.Node{
+						existingNode,
+					},
+				},
+			)
 
 			ipt, err := util.NewFakeWithProtocol(iptables.ProtocolIPv4)
 			Expect(err).NotTo(HaveOccurred())
 			util.SetIPTablesHelper(iptables.ProtocolIPv4, ipt)
 
-			nodeAnnotator := kube.NewNodeAnnotator(&kube.Kube{fakeClient}, &existingNode)
+			nodeAnnotator := kube.NewNodeAnnotator(&kube.Kube{fakeOvnNode.fakeClient}, &existingNode)
 			err = util.SetNodeHostSubnetAnnotation(nodeAnnotator, ovntest.MustParseIPNet(nodeSubnet))
+
 			Expect(err).NotTo(HaveOccurred())
 			err = nodeAnnotator.Run()
 			Expect(err).NotTo(HaveOccurred())
@@ -355,7 +344,7 @@ var _ = Describe("Gateway Init Operations", func() {
 			err = testNS.Do(func(ns.NetNS) error {
 				defer GinkgoRecover()
 
-				err = initLocalnetGateway(nodeName, ovntest.MustParseIPNet(nodeSubnet), wf, nodeAnnotator)
+				err = fakeOvnNode.node.initLocalnetGateway(ovntest.MustParseIPNet(nodeSubnet), nodeAnnotator)
 				Expect(err).NotTo(HaveOccurred())
 				// Check if IP has been assigned to LocalnetGatewayNextHopPort
 				link, err := netlink.LinkByName(localnetGatewayNextHopPort)
@@ -384,23 +373,28 @@ var _ = Describe("Gateway Init Operations", func() {
 						"-i " + localnetGatewayNextHopPort + " -m comment --comment from OVN to localhost -j ACCEPT",
 					},
 					"FORWARD": []string{
+						"-j OVN-KUBE-EXTERNALIP",
 						"-j OVN-KUBE-NODEPORT",
 						"-o " + localnetGatewayNextHopPort + " -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
 						"-i " + localnetGatewayNextHopPort + " -j ACCEPT",
 					},
-					"OVN-KUBE-NODEPORT": []string{},
+					"OVN-KUBE-NODEPORT":   []string{},
+					"OVN-KUBE-EXTERNALIP": []string{},
 				},
 				"nat": {
 					"POSTROUTING": []string{
 						"-s 169.254.33.2 -j MASQUERADE",
 					},
 					"PREROUTING": []string{
+						"-j OVN-KUBE-EXTERNALIP",
 						"-j OVN-KUBE-NODEPORT",
 					},
 					"OUTPUT": []string{
+						"-j OVN-KUBE-EXTERNALIP",
 						"-j OVN-KUBE-NODEPORT",
 					},
-					"OVN-KUBE-NODEPORT": []string{},
+					"OVN-KUBE-NODEPORT":   []string{},
+					"OVN-KUBE-EXTERNALIP": []string{},
 				},
 			}
 			Expect(ipt.MatchState(expectedTables)).NotTo(HaveOccurred())
