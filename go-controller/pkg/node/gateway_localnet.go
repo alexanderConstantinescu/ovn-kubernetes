@@ -10,7 +10,6 @@ import (
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
-	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/factory"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/kube"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/util"
 	"k8s.io/klog"
@@ -127,7 +126,7 @@ func localnetGatewayNAT(ipt util.IPTablesHelper, ifname string, ip net.IP) error
 	return addIptRules(ipt, rules)
 }
 
-func initLocalnetGateway(nodeName string, subnet *net.IPNet, wf *factory.WatchFactory, nodeAnnotator kube.Annotator, recorder record.EventRecorder) error {
+func (n *OvnNode) initLocalnetGateway(subnet *net.IPNet, nodeAnnotator kube.Annotator) error {
 	// Create a localnet OVS bridge.
 	localnetBridgeName := "br-local"
 	_, stderr, err := util.RunOVSVsctl("--may-exist", "add-br",
@@ -137,7 +136,7 @@ func initLocalnetGateway(nodeName string, subnet *net.IPNet, wf *factory.WatchFa
 			", stderr:%s (%v)", localnetBridgeName, stderr, err)
 	}
 
-	ifaceID, macAddress, err := bridgedGatewayNodeSetup(nodeName, localnetBridgeName, localnetBridgeName, true)
+	ifaceID, macAddress, err := bridgedGatewayNodeSetup(n.name, localnetBridgeName, localnetBridgeName, true)
 	if err != nil {
 		return fmt.Errorf("failed to set up shared interface gateway: %v", err)
 	}
@@ -225,7 +224,9 @@ func initLocalnetGateway(nodeName string, subnet *net.IPNet, wf *factory.WatchFa
 	}
 
 	if config.Gateway.NodeportEnable {
-		err = localnetNodePortWatcher(ipt, wf, gatewayIP, gatewayNextHop, recorder)
+		err = n.localnetNodePortWatcher(
+			newLocalnetNodePortWatcherData(ipt, gatewayIP, n.recorder),
+		)
 	}
 
 	return err
@@ -250,39 +251,67 @@ type activeSocket interface {
 	Close() error
 }
 
-var activeSockets map[int32]activeSocket
+type localNodePortWatcher interface {
+	initIPTables() error
+	getLocalAddrs() error
+	addService(svc *kapi.Service) error
+	deleteService(svc *kapi.Service) error
+	syncServices(serviceInterface []interface{})
+}
 
-func openLocalPort(port int32, protocol kapi.Protocol) (activeSocket, error) {
+type localnetNodePortWatcherData struct {
+	localNodePortWatcher
+	recorder      record.EventRecorder
+	ipt           util.IPTablesHelper
+	gatewayIP     string
+	localAddrSet  map[string]net.IPNet
+	activeSockets map[int32]activeSocket
+}
+
+func newLocalnetNodePortWatcherData(ipt util.IPTablesHelper, gatewayIP net.IP, recorder record.EventRecorder) *localnetNodePortWatcherData {
+	return &localnetNodePortWatcherData{
+		ipt:           ipt,
+		gatewayIP:     gatewayIP.String(),
+		recorder:      recorder,
+		activeSockets: make(map[int32]activeSocket),
+	}
+}
+
+func (npw *localnetNodePortWatcherData) openLocalPort(port int32, protocol kapi.Protocol, svc *kapi.Service) error {
 	var socket activeSocket
+	var socketError error
 	switch protocol {
 	case kapi.ProtocolTCP:
 		listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 		if err != nil {
-			return nil, err
+			socketError = err
+			break
 		}
 		socket = listener
 	case kapi.ProtocolUDP:
 		addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", port))
 		if err != nil {
-			return nil, err
+			socketError = err
+			break
 		}
 		conn, err := net.ListenUDP("udp", addr)
 		if err != nil {
-			return nil, err
+			socketError = err
+			break
 		}
 		socket = conn
+	case kapi.ProtocolSCTP:
+		// TOOD: implement
+		socketError = fmt.Errorf("unsupported protocol: %q", protocol)
 	default:
-		return nil, fmt.Errorf("unknown protocol %q", protocol)
+		socketError = fmt.Errorf("unknown protocol %q", protocol)
 	}
-	return socket, nil
-}
-
-type localnetNodePortWatcherData struct {
-	recorder         record.EventRecorder
-	ipt              util.IPTablesHelper
-	gatewayIP        string
-	gatewayNextHopIP string
-	localAddrSet     map[string]net.IPNet
+	if socketError != nil {
+		npw.emitPortClaimEvent(svc, port, socketError)
+		return socketError
+	}
+	npw.activeSockets[port] = socket
+	return nil
 }
 
 func (npw *localnetNodePortWatcherData) getLocalAddrs() error {
@@ -304,7 +333,7 @@ func (npw *localnetNodePortWatcherData) getLocalAddrs() error {
 
 func (npw *localnetNodePortWatcherData) nodePortIPTRules(svcPort v1.ServicePort, gatewayIP string) []iptRule {
 	return []iptRule{
-		iptRule{
+		{
 			table: "nat",
 			chain: iptableNodePortChain,
 			args: []string{
@@ -314,7 +343,7 @@ func (npw *localnetNodePortWatcherData) nodePortIPTRules(svcPort v1.ServicePort,
 				"--to-destination", net.JoinHostPort(gatewayIP, fmt.Sprintf("%d", svcPort.NodePort)),
 			},
 		},
-		iptRule{
+		{
 			table: "filter",
 			chain: iptableNodePortChain,
 			args: []string{
@@ -328,7 +357,7 @@ func (npw *localnetNodePortWatcherData) nodePortIPTRules(svcPort v1.ServicePort,
 
 func (npw *localnetNodePortWatcherData) externalIPTRules(svcPort v1.ServicePort, externalIP, dstIP string) []iptRule {
 	return []iptRule{
-		iptRule{
+		{
 			table: "nat",
 			chain: iptableExternalIPChain,
 			args: []string{
@@ -339,9 +368,9 @@ func (npw *localnetNodePortWatcherData) externalIPTRules(svcPort v1.ServicePort,
 				"--to-destination", net.JoinHostPort(dstIP, fmt.Sprintf("%v", svcPort.Port)),
 			},
 		},
-		iptRule{
+		{
 			table: "filter",
-			chain: iptableNodePortChain,
+			chain: iptableExternalIPChain,
 			args: []string{
 				"-p", string(svcPort.Protocol),
 				"-d", externalIP,
@@ -390,12 +419,9 @@ func (npw *localnetNodePortWatcherData) addService(svc *kapi.Service) error {
 				klog.Warningf("invalid service node port %s, err: %v", port.Name, err)
 				continue
 			}
-			socket, err := openLocalPort(port.NodePort, port.Protocol)
-			if err != nil {
-				npw.emitPortClaimEvent(svc, port.NodePort, err)
+			if err := npw.openLocalPort(port.NodePort, port.Protocol, svc); err != nil {
 				continue
 			}
-			activeSockets[port.NodePort] = socket
 			iptRules = append(iptRules, npw.nodePortIPTRules(port, npw.gatewayIP)...)
 		}
 		for _, externalIP := range svc.Spec.ExternalIPs {
@@ -414,12 +440,9 @@ func (npw *localnetNodePortWatcherData) addService(svc *kapi.Service) error {
 					klog.Warningf("UnsupportedServiceDefinition event for service %s in namespace %s", svc.Name, svc.Namespace)
 					continue
 				}
-				socket, err := openLocalPort(port.Port, port.Protocol)
-				if err != nil {
-					npw.emitPortClaimEvent(svc, port.Port, err)
+				if err := npw.openLocalPort(port.Port, port.Protocol, svc); err != nil {
 					continue
 				}
-				activeSockets[port.Port] = socket
 				iptRules = append(iptRules, npw.externalIPTRules(port, externalIP, svc.Spec.ClusterIP)...)
 				continue
 			}
@@ -441,21 +464,21 @@ func (npw *localnetNodePortWatcherData) deleteService(svc *kapi.Service) error {
 	iptRules := []iptRule{}
 	for _, port := range svc.Spec.Ports {
 		if util.ServiceTypeHasNodePort(svc) {
-			if socket, exists := activeSockets[port.NodePort]; exists {
+			if socket, exists := npw.activeSockets[port.NodePort]; exists {
 				if err := socket.Close(); err != nil {
 					klog.Errorf("error closing socket for NodePort svc: %s on port: %v, err: %v", svc.Name, port, err)
 				}
-				delete(activeSockets, port.NodePort)
+				delete(npw.activeSockets, port.NodePort)
 				iptRules = append(iptRules, npw.nodePortIPTRules(port, npw.gatewayIP)...)
 			}
 		}
 		for _, externalIP := range svc.Spec.ExternalIPs {
 			if _, exists := npw.localAddrSet[externalIP]; exists {
-				if socket, exists := activeSockets[port.Port]; exists {
+				if socket, exists := npw.activeSockets[port.Port]; exists {
 					if err := socket.Close(); err != nil {
 						klog.Errorf("error closing socket for ExternalIP svc: %s on port: %v, err: %v", svc.Name, port, err)
 					}
-					delete(activeSockets, port.Port)
+					delete(npw.activeSockets, port.Port)
 					iptRules = append(iptRules, npw.externalIPTRules(port, externalIP, svc.Spec.ClusterIP)...)
 					continue
 				}
@@ -474,7 +497,7 @@ func (npw *localnetNodePortWatcherData) deleteService(svc *kapi.Service) error {
 
 func (npw *localnetNodePortWatcherData) syncServices(serviceInterface []interface{}) {
 	removeStaleIPTRules := func(table, chain string, serviceRules []iptRule) {
-		if ipTableRules, err := npw.ipt.List(table, chain); err != nil {
+		if ipTableRules, err := npw.ipt.List(table, chain); err == nil {
 			for _, ipTableRule := range ipTableRules {
 				isFound := false
 				for _, serviceRule := range serviceRules {
@@ -508,7 +531,7 @@ func (npw *localnetNodePortWatcherData) syncServices(serviceInterface []interfac
 			}
 			if !isFound {
 				klog.V(5).Infof("deleting stale routing rule: %s", existingRoute)
-				if _, stderr, err := util.RunIP("route", "del", existingRoute); err != nil {
+				if _, stderr, err := util.RunIP("route", "del", existingRoute, "table", localnetGatwayExternalIDTable); err != nil {
 					klog.Errorf("error deleting stale routing rule: stderr: %s, err: %v", stderr, err)
 				}
 			}
@@ -543,11 +566,15 @@ func (npw *localnetNodePortWatcherData) syncServices(serviceInterface []interfac
 	removeStaleRoutes(exteriorExternalIPs)
 }
 
-func initIPTables(ipt util.IPTablesHelper) error {
+func (npw *localnetNodePortWatcherData) initIPTables() error {
 	rules := make([]iptRule, 0)
 	for _, chain := range []string{iptableNodePortChain, iptableExternalIPChain} {
-		ipt.NewChain("nat", chain)
-		ipt.NewChain("filter", chain)
+		if err := npw.ipt.NewChain("nat", chain); err != nil {
+			klog.Warning(err)
+		}
+		if err := npw.ipt.NewChain("filter", chain); err != nil {
+			klog.Warning(err)
+		}
 		rules = append(rules, iptRule{
 			table: "nat",
 			chain: "PREROUTING",
@@ -564,7 +591,7 @@ func initIPTables(ipt util.IPTablesHelper) error {
 			args:  []string{"-j", chain},
 		})
 	}
-	if err := addIptRules(ipt, rules); err != nil {
+	if err := addIptRules(npw.ipt, rules); err != nil {
 		return err
 	}
 	return nil
@@ -583,21 +610,17 @@ func initRoutingRules() error {
 	return nil
 }
 
-func localnetNodePortWatcher(ipt util.IPTablesHelper, wf *factory.WatchFactory, gatewayIP, gatewayNextHop net.IP, recorder record.EventRecorder) error {
-	activeSockets = make(map[int32]activeSocket)
-
-	if err := initIPTables(ipt); err != nil {
+func (n *OvnNode) localnetNodePortWatcher(npw localNodePortWatcher) error {
+	if err := npw.initIPTables(); err != nil {
 		return err
 	}
 	if err := initRoutingRules(); err != nil {
 		return err
 	}
-
-	npw := &localnetNodePortWatcherData{ipt: ipt, gatewayIP: gatewayIP.String(), gatewayNextHopIP: gatewayNextHop.String(), recorder: recorder}
 	if err := npw.getLocalAddrs(); err != nil {
 		return fmt.Errorf("error listing node interface addresses: %v", err)
 	}
-	_, err := wf.AddServiceHandler(cache.ResourceEventHandlerFuncs{
+	_, err := n.watchFactory.AddServiceHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			svc := obj.(*kapi.Service)
 			err := npw.addService(svc)

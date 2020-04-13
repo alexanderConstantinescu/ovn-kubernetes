@@ -93,9 +93,10 @@ func (ovn *Controller) syncServices(services []interface{}) {
 
 		for vip := range loadBalancerVIPs {
 			if !stringSliceMembership(clusterServices[protocol], vip) {
-				klog.V(5).Infof("Deleting stale cluster vip %s in "+
-					"loadbalancer %s", vip, loadBalancer)
-				ovn.deleteLoadBalancerVIP(loadBalancer, vip)
+				klog.V(5).Infof("Deleting stale cluster vip %s in loadbalancer %s", vip, loadBalancer)
+				if err := ovn.deleteLoadBalancerVIP(loadBalancer, vip); err != nil {
+					klog.Error(err)
+				}
 			}
 		}
 	}

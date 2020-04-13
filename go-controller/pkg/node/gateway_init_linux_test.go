@@ -209,8 +209,13 @@ cookie=0x0, duration=8366.597s, table=1, n_packets=10641, n_bytes=10370087, prio
 }
 
 var _ = Describe("Gateway Init Operations", func() {
-	var app *cli.App
-	var testNS ns.NetNS
+
+	var (
+		testNS      ns.NetNS
+		app         *cli.App
+		fakeOvnNode *FakeOVNNode
+		fexec       *ovntest.FakeExec
+	)
 
 	BeforeEach(func() {
 		var err error
@@ -223,6 +228,9 @@ var _ = Describe("Gateway Init Operations", func() {
 		app = cli.NewApp()
 		app.Name = "test"
 		app.Flags = config.Flags
+
+		fexec = ovntest.NewFakeExec()
+		fakeOvnNode = NewFakeOVNNode(fexec)
 
 		// Set up a fake br-local & LocalnetGatewayNextHopPort
 		testNS, err = testutils.NewNS()
@@ -259,13 +267,12 @@ var _ = Describe("Gateway Init Operations", func() {
 			const (
 				nodeName      string = "node1"
 				brLocalnetMAC string = "11:22:33:44:55:66"
-				brNextHopIp   string = "169.254.33.1"
-				brNextHopCIDR string = brNextHopIp + "/24"
+				brNextHopIP   string = "169.254.33.1"
+				brNextHopCIDR string = brNextHopIP + "/24"
 				systemID      string = "cb9ec8fa-b409-4ef3-9f42-d9283c47aac6"
 				nodeSubnet    string = "10.1.1.0/24"
 			)
 
-			fexec := ovntest.NewFakeExec()
 			fexec.AddFakeCmdsNoOutputNoError([]string{
 				"ovs-vsctl --timeout=15 --may-exist add-br br-local",
 			})
@@ -293,29 +300,26 @@ var _ = Describe("Gateway Init Operations", func() {
 			fexec.AddFakeCmdsNoOutputNoError([]string{
 				"ip route list table " + localnetGatwayExternalIDTable,
 			})
-			err := util.SetExec(fexec)
-			Expect(err).NotTo(HaveOccurred())
-
-			_, err = config.InitConfig(ctx, fexec, nil)
-			Expect(err).NotTo(HaveOccurred())
 
 			existingNode := v1.Node{ObjectMeta: metav1.ObjectMeta{
 				Name: nodeName,
 			}}
-			fakeClient := fake.NewSimpleClientset(&v1.NodeList{
-				Items: []v1.Node{existingNode},
-			})
-			stop := make(chan struct{})
-			wf, err := factory.NewWatchFactory(fakeClient, stop)
-			Expect(err).NotTo(HaveOccurred())
-			defer close(stop)
+
+			fakeOvnNode.start(ctx,
+				&v1.NodeList{
+					Items: []v1.Node{
+						existingNode,
+					},
+				},
+			)
 
 			ipt, err := util.NewFakeWithProtocol(iptables.ProtocolIPv4)
 			Expect(err).NotTo(HaveOccurred())
 			util.SetIPTablesHelper(iptables.ProtocolIPv4, ipt)
 
-			nodeAnnotator := kube.NewNodeAnnotator(&kube.Kube{fakeClient}, &existingNode)
+			nodeAnnotator := kube.NewNodeAnnotator(&kube.Kube{fakeOvnNode.fakeClient}, &existingNode)
 			err = util.SetNodeHostSubnetAnnotation(nodeAnnotator, []*net.IPNet{ovntest.MustParseIPNet(nodeSubnet)})
+
 			Expect(err).NotTo(HaveOccurred())
 			err = nodeAnnotator.Run()
 			Expect(err).NotTo(HaveOccurred())
@@ -323,7 +327,7 @@ var _ = Describe("Gateway Init Operations", func() {
 			err = testNS.Do(func(ns.NetNS) error {
 				defer GinkgoRecover()
 
-				err = initLocalnetGateway(nodeName, ovntest.MustParseIPNet(nodeSubnet), wf, nodeAnnotator, record.NewFakeRecorder(0))
+				err = fakeOvnNode.node.initLocalnetGateway(ovntest.MustParseIPNet(nodeSubnet), nodeAnnotator)
 				Expect(err).NotTo(HaveOccurred())
 				// Check if IP has been assigned to LocalnetGatewayNextHopPort
 				link, err := netlink.LinkByName(localnetGatewayNextHopPort)
