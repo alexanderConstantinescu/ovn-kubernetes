@@ -221,6 +221,8 @@ func initLocalnetGateway(nodeName string, subnet *net.IPNet, wf *factory.WatchFa
 		err = localnetNodePortWatcher(ipt, wf, gatewayIP)
 	}
 
+	err = localnetEgressIPWatcher(ipt, wf)
+
 	return err
 }
 
@@ -291,6 +293,21 @@ func (npw *localnetNodePortWatcherData) deleteService(svc *kapi.Service) error {
 	klog.V(5).Infof("Delete rules %v for service %v", rules, svc.Name)
 	delIptRules(npw.ipt, rules)
 	return nil
+}
+
+func localnetEgressIPWatcher(ipt util.IPTablesHelper, wf *factory.WatchFactory) error {
+	_, err := wf.AddEgressIPHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			klog.Info("IMPLEMENT")
+		},
+		UpdateFunc: func(old, new interface{}) {
+			klog.Info("IMPLEMENT")
+		},
+		DeleteFunc: func(obj interface{}) {
+			klog.Info("IMPLEMENT")
+		},
+	}, nil)
+	return err
 }
 
 func localnetNodePortWatcher(ipt util.IPTablesHelper, wf *factory.WatchFactory, gatewayIP net.IP) error {

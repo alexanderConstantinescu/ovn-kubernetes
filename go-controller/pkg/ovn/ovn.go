@@ -189,7 +189,7 @@ func (oc *Controller) Run() error {
 	}
 
 	for _, f := range []func() error{oc.WatchPods, oc.WatchServices, oc.WatchEndpoints,
-		oc.WatchNamespaces, oc.WatchNetworkPolicy, oc.WatchEgressFirewall} {
+		oc.WatchNamespaces, oc.WatchNetworkPolicy, oc.WatchEgressFirewall, oc.WatchEgressIP} {
 		if err := f(); err != nil {
 			return err
 		}
@@ -527,6 +527,23 @@ func (oc *Controller) WatchEgressFirewall() error {
 		},
 		DeleteFunc: func(obj interface{}) {
 			klog.Errorf("KEYWORD: DELEING EXISTING EGRESSFIREWALL")
+		},
+	}, nil)
+	return err
+}
+
+// WatchEgressIP starts the watching of egressip resource and calls
+// back the appropriate handler logic
+func (oc *Controller) WatchEgressIP() error {
+	_, err := oc.watchFactory.AddEgressIPHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			klog.Errorf("KEYWORD: ADDING NEW EGRESSIP")
+		},
+		UpdateFunc: func(old, newer interface{}) {
+			klog.Errorf("KEYWORD: UPDAING EXISTING EGRESSIP")
+		},
+		DeleteFunc: func(obj interface{}) {
+			klog.Errorf("KEYWORD: DELEING EXISTING EGRESSIP")
 		},
 	}, nil)
 	return err

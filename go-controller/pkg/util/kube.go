@@ -3,9 +3,10 @@ package util
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
-	"strings"
 
 	kapi "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -16,6 +17,7 @@ import (
 	"k8s.io/client-go/util/cert"
 
 	egressfirewallclientset "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressfirewall/v1/apis/clientset/versioned"
+	egressipclientset "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1/apis/clientset/versioned"
 
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/cni/types"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
@@ -23,7 +25,7 @@ import (
 
 // NewClientset creates a Kubernetes clientset from either a kubeconfig,
 // TLS properties, or an apiserver URL
-func NewClientset(conf *config.KubernetesConfig) (*kubernetes.Clientset, *egressfirewallclientset.Clientset, error) {
+func NewClientset(conf *config.KubernetesConfig) (*kubernetes.Clientset, *egressfirewallclientset.Clientset, *egressipclientset.Clientset, error) {
 	var kconfig *rest.Config
 	var err error
 
@@ -32,7 +34,7 @@ func NewClientset(conf *config.KubernetesConfig) (*kubernetes.Clientset, *egress
 		kconfig, err = clientcmd.BuildConfigFromFlags("", conf.Kubeconfig)
 	} else if strings.HasPrefix(conf.APIServer, "https") {
 		if conf.APIServer == "" || conf.Token == "" {
-			return nil, nil, fmt.Errorf("TLS-secured apiservers require token and CA certificate")
+			return nil, nil, nil, fmt.Errorf("TLS-secured apiservers require token and CA certificate")
 		}
 		kconfig = &rest.Config{
 			Host:        conf.APIServer,
@@ -40,7 +42,7 @@ func NewClientset(conf *config.KubernetesConfig) (*kubernetes.Clientset, *egress
 		}
 		if conf.CACert != "" {
 			if _, err := cert.NewPool(conf.CACert); err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			kconfig.TLSClientConfig = rest.TLSClientConfig{CAFile: conf.CACert}
 		}
@@ -53,7 +55,7 @@ func NewClientset(conf *config.KubernetesConfig) (*kubernetes.Clientset, *egress
 		kconfig, err = rest.InClusterConfig()
 	}
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	kconfig.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
@@ -61,14 +63,18 @@ func NewClientset(conf *config.KubernetesConfig) (*kubernetes.Clientset, *egress
 
 	kClientset, err := kubernetes.NewForConfig(kconfig)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	egressFirewallClientset, err := egressfirewallclientset.NewForConfig(kconfig)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
+	}
+	egressIPClientset, err := egressipclientset.NewForConfig(kconfig)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
-	return kClientset, egressFirewallClientset, nil
+	return kClientset, egressFirewallClientset, egressIPClientset, nil
 }
 
 // IsClusterIPSet checks if the service is an headless service or not
