@@ -264,7 +264,7 @@ var _ = Describe("Master Operations", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			stopChan := make(chan struct{})
-			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan)
+			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			defer close(stopChan)
 
@@ -351,7 +351,7 @@ var _ = Describe("Master Operations", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			stopChan := make(chan struct{})
-			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan)
+			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			defer close(stopChan)
 
@@ -439,7 +439,7 @@ var _ = Describe("Master Operations", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			stopChan := make(chan struct{})
-			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan)
+			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			defer close(stopChan)
 
@@ -624,7 +624,7 @@ subnet=%s
 			Expect(err).NotTo(HaveOccurred())
 
 			stopChan := make(chan struct{})
-			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan)
+			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			defer close(stopChan)
 
@@ -823,7 +823,7 @@ var _ = Describe("Gateway Init Operations", func() {
 			})
 
 			stop := make(chan struct{})
-			wf, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+			wf, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			defer close(stop)
 
@@ -1019,7 +1019,7 @@ var _ = Describe("Gateway Init Operations", func() {
 			})
 
 			stop := make(chan struct{})
-			wf, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+			wf, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			defer close(stop)
 

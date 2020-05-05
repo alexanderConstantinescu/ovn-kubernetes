@@ -70,9 +70,11 @@ var (
 
 	// Kubernetes holds Kubernetes-related parsed config file parameters and command-line overrides
 	Kubernetes = KubernetesConfig{
-		APIServer:          DefaultAPIServer,
-		RawServiceCIDRs:    "172.16.1.0/24",
-		OVNConfigNamespace: "ovn-kubernetes",
+		APIServer:             DefaultAPIServer,
+		RawServiceCIDRs:       "172.16.1.0/24",
+		OVNConfigNamespace:    "ovn-kubernetes",
+		EgressFirewallEnabled: true,
+		EgressIPEnabled:       true,
 	}
 
 	// OvnNorth holds northbound OVN database client and server authentication and location details
@@ -169,20 +171,22 @@ type CNIConfig struct {
 
 // KubernetesConfig holds Kubernetes-related parsed config file parameters and command-line overrides
 type KubernetesConfig struct {
-	Kubeconfig           string `gcfg:"kubeconfig"`
-	CACert               string `gcfg:"cacert"`
-	APIServer            string `gcfg:"apiserver"`
-	Token                string `gcfg:"token"`
-	CompatServiceCIDR    string `gcfg:"service-cidr"`
-	RawServiceCIDRs      string `gcfg:"service-cidrs"`
-	ServiceCIDRs         []*net.IPNet
-	OVNConfigNamespace   string `gcfg:"ovn-config-namespace"`
-	MetricsBindAddress   string `gcfg:"metrics-bind-address"`
-	MetricsEnablePprof   bool   `gcfg:"metrics-enable-pprof"`
-	OVNEmptyLbEvents     bool   `gcfg:"ovn-empty-lb-events"`
-	PodIP                string `gcfg:"pod-ip"` // UNUSED
-	RawNoHostSubnetNodes string `gcfg:"no-hostsubnet-nodes"`
-	NoHostSubnetNodes    *metav1.LabelSelector
+	Kubeconfig            string `gcfg:"kubeconfig"`
+	CACert                string `gcfg:"cacert"`
+	APIServer             string `gcfg:"apiserver"`
+	Token                 string `gcfg:"token"`
+	CompatServiceCIDR     string `gcfg:"service-cidr"`
+	RawServiceCIDRs       string `gcfg:"service-cidrs"`
+	ServiceCIDRs          []*net.IPNet
+	OVNConfigNamespace    string `gcfg:"ovn-config-namespace"`
+	MetricsBindAddress    string `gcfg:"metrics-bind-address"`
+	MetricsEnablePprof    bool   `gcfg:"metrics-enable-pprof"`
+	OVNEmptyLbEvents      bool   `gcfg:"ovn-empty-lb-events"`
+	PodIP                 string `gcfg:"pod-ip"` // UNUSED
+	RawNoHostSubnetNodes  string `gcfg:"no-hostsubnet-nodes"`
+	NoHostSubnetNodes     *metav1.LabelSelector
+	EgressIPEnabled       bool `gcfg:"egressIPEnabled"`
+	EgressFirewallEnabled bool `gcfg:"egressIPEnabled"`
 }
 
 // GatewayMode holds the node gateway mode
@@ -598,6 +602,16 @@ var K8sFlags = []cli.Flag{
 	&cli.StringFlag{
 		Name:  "pod-ip",
 		Usage: "UNUSED",
+	},
+	&cli.BoolFlag{
+		Name:        "egress-ip-enable",
+		Usage:       "Configure to use EgressIP CRD feature with ovn-kubernetes.",
+		Destination: &cliConfig.Kubernetes.EgressIPEnabled,
+	},
+	&cli.BoolFlag{
+		Name:        "egress-firewall-enable",
+		Usage:       "Configure to use EgressFirewall CRD feature with ovn-kubernetes.",
+		Destination: &cliConfig.Kubernetes.EgressFirewallEnabled,
 	},
 	&cli.StringFlag{
 		Name:        "no-hostsubnet-nodes",

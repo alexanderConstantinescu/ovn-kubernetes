@@ -10,6 +10,7 @@ import (
 
 	"k8s.io/klog"
 
+	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
 	egressfirewallapi "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressfirewall/v1"
 	egressfirewallclientset "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressfirewall/v1/apis/clientset/versioned"
 	egressfirewallscheme "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressfirewall/v1/apis/clientset/versioned/scheme"
@@ -443,7 +444,7 @@ var (
 )
 
 // NewWatchFactory initializes a new watch factory
-func NewWatchFactory(c kubernetes.Interface, ef egressfirewallclientset.Interface, eip egressipclientset.Interface, stopChan chan struct{}) (*WatchFactory, error) {
+func NewWatchFactory(c kubernetes.Interface, ef egressfirewallclientset.Interface, eip egressipclientset.Interface, stopChan chan struct{}, conf *config.KubernetesConfig) (*WatchFactory, error) {
 
 	// resync time is 12 hours, none of the resources being watched in ovn-kubernetes have
 	// any race condition where a resync may be required e.g. cni executable on node watching for
@@ -500,8 +501,13 @@ func NewWatchFactory(c kubernetes.Interface, ef egressfirewallclientset.Interfac
 	if err != nil {
 		return nil, err
 	}
-	wf.efFactory.Start(stopChan)
-	wf.eipFactory.Start(stopChan)
+
+	if conf.EgressFirewallEnabled {
+		wf.efFactory.Start(stopChan)
+	}
+	if conf.EgressIPEnabled {
+		wf.eipFactory.Start(stopChan)
+	}
 
 	wf.iFactory.Start(stopChan)
 	for oType, synced := range wf.iFactory.WaitForCacheSync(stopChan) {

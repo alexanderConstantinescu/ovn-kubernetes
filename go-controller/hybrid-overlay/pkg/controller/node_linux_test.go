@@ -147,7 +147,7 @@ var _ = Describe("Hybrid Overlay Node Linux Operations", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			stopChan := make(chan struct{})
-			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan)
+			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			defer close(stopChan)
 
@@ -202,7 +202,7 @@ var _ = Describe("Hybrid Overlay Node Linux Operations", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			stopChan := make(chan struct{})
-			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan)
+			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			defer close(stopChan)
 
@@ -249,7 +249,7 @@ var _ = Describe("Hybrid Overlay Node Linux Operations", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			stopChan := make(chan struct{})
-			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan)
+			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			defer close(stopChan)
 
@@ -305,7 +305,7 @@ var _ = Describe("Hybrid Overlay Node Linux Operations", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			stopChan := make(chan struct{})
-			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan)
+			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			defer close(stopChan)
 
@@ -359,7 +359,7 @@ var _ = Describe("Hybrid Overlay Node Linux Operations", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			stopChan := make(chan struct{})
-			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan)
+			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			defer close(stopChan)
 
@@ -408,7 +408,7 @@ var _ = Describe("Hybrid Overlay Node Linux Operations", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			stopChan := make(chan struct{})
-			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan)
+			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			defer close(stopChan)
 
@@ -459,7 +459,7 @@ var _ = Describe("Hybrid Overlay Node Linux Operations", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			stopChan := make(chan struct{})
-			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan)
+			f, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stopChan, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			defer close(stopChan)
 

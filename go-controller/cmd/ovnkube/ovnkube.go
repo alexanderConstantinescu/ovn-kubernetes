@@ -195,7 +195,7 @@ func runOvnKube(ctx *cli.Context) error {
 
 	// create factory and start the controllers asked for
 	stopChan := make(chan struct{})
-	factory, err := factory.NewWatchFactory(clientset, egressFirewallClientset, egressIPClientset, stopChan)
+	factory, err := factory.NewWatchFactory(clientset, egressFirewallClientset, egressIPClientset, stopChan, &config.Kubernetes)
 	if err != nil {
 		return err
 	}

@@ -141,7 +141,7 @@ cookie=0x0, duration=8366.597s, table=1, n_packets=10641, n_bytes=10370087, prio
 		egressIPFakeClient := &egressipfake.Clientset{}
 
 		stop := make(chan struct{})
-		wf, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 		defer close(stop)
 
@@ -303,7 +303,7 @@ var _ = Describe("Gateway Init Operations", func() {
 			egressIPFakeClient := &egressipfake.Clientset{}
 
 			stop := make(chan struct{})
-			wf, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+			wf, err := factory.NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			defer close(stop)
 

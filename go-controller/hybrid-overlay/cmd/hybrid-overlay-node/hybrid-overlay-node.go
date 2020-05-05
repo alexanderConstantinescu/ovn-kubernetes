@@ -90,7 +90,7 @@ func runHybridOverlay(ctx *cli.Context) error {
 	stopChan := make(chan struct{})
 	defer close(stopChan)
 
-	factory, err := factory.NewWatchFactory(clientset, egressFirewallClientset, egressIPClientset, stopChan)
+	factory, err := factory.NewWatchFactory(clientset, egressFirewallClientset, egressIPClientset, stopChan, &config.Kubernetes)
 	if err != nil {
 		return err
 	}

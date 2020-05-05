@@ -17,6 +17,7 @@ import (
 	core "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 
+	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
 	egressfirewall "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressfirewall/v1"
 	egressfirewallfake "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressfirewall/v1/apis/clientset/versioned/fake"
 	egressip "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1"
@@ -197,6 +198,7 @@ var _ = Describe("Watch Factory Operations", func() {
 		fakeClient = &fake.Clientset{}
 		egressFirewallFakeClient = &egressfirewallfake.Clientset{}
 		egressIPFakeClient = &egressipfake.Clientset{}
+		config.PrepareTestConfig()
 		stop = make(chan struct{})
 
 		pods = make([]*v1.Pod, 0)
@@ -278,7 +280,7 @@ var _ = Describe("Watch Factory Operations", func() {
 
 	Context("when a processExisting is given", func() {
 		testExisting := func(objType reflect.Type, namespace string, lsel *metav1.LabelSelector) {
-			wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+			wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			h, err := wf.addHandler(objType, namespace, lsel,
 				cache.ResourceEventHandlerFuncs{},
@@ -343,7 +345,7 @@ var _ = Describe("Watch Factory Operations", func() {
 
 	Context("when existing items are known to the informer", func() {
 		testExisting := func(objType reflect.Type) {
-			wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+			wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 			Expect(err).NotTo(HaveOccurred())
 			var addCalls int32
 			h, err := wf.addHandler(objType, "", nil,
@@ -406,6 +408,41 @@ var _ = Describe("Watch Factory Operations", func() {
 		})
 	})
 
+	Context("when CRDs are disabled", func() {
+		testExisting := func(objType reflect.Type) {
+			wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
+			Expect(err).NotTo(HaveOccurred())
+			var addCalls int32
+			h, err := wf.addHandler(objType, "", nil,
+				cache.ResourceEventHandlerFuncs{
+					AddFunc: func(obj interface{}) {
+						atomic.AddInt32(&addCalls, 1)
+					},
+					UpdateFunc: func(old, new interface{}) {},
+					DeleteFunc: func(obj interface{}) {},
+				}, func(existing []interface{}) {
+					atomic.AddInt32(&addCalls, int32(len(existing)))
+				})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(int(addCalls)).To(Equal(0))
+			wf.removeHandler(objType, h)
+		}
+		It("does not call ADD for each existing egressFirewall", func() {
+			config.Kubernetes.EgressFirewallEnabled = false
+
+			egressFirewalls = append(egressFirewalls, newEgressFirewall("myFirewall", "default"))
+			egressFirewalls = append(egressFirewalls, newEgressFirewall("myFirewall1", "default"))
+			testExisting(egressFirewallType)
+		})
+		It("does not call ADD for each existing egressIP", func() {
+
+			config.Kubernetes.EgressIPEnabled = false
+			egressIPs = append(egressIPs, newEgressIP("myEgressIP", "default"))
+			egressIPs = append(egressIPs, newEgressIP("myEgressIP1", "default"))
+			testExisting(egressIPType)
+		})
+	})
+
 	addFilteredHandler := func(wf *WatchFactory, objType reflect.Type, namespace string, lsel *metav1.LabelSelector, funcs cache.ResourceEventHandlerFuncs) (*Handler, *handlerCalls) {
 		calls := handlerCalls{}
 		h, err := wf.addHandler(objType, namespace, lsel, cache.ResourceEventHandlerFuncs{
@@ -435,7 +472,7 @@ var _ = Describe("Watch Factory Operations", func() {
 	}
 
 	It("responds to pod add/update/delete events", func() {
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		added := newPod("pod1", "default")
@@ -469,7 +506,7 @@ var _ = Describe("Watch Factory Operations", func() {
 	})
 
 	It("responds to multiple pod add/update/delete events", func() {
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		const nodeName string = "mynode"
@@ -539,7 +576,7 @@ var _ = Describe("Watch Factory Operations", func() {
 	})
 
 	It("responds to namespace add/update/delete events", func() {
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		added := newNamespace("default")
@@ -573,7 +610,7 @@ var _ = Describe("Watch Factory Operations", func() {
 	})
 
 	It("responds to node add/update/delete events", func() {
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		added := newNode("mynode")
@@ -607,7 +644,7 @@ var _ = Describe("Watch Factory Operations", func() {
 	})
 
 	It("responds to multiple node add/update/delete events", func() {
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		type opTest struct {
@@ -691,7 +728,7 @@ var _ = Describe("Watch Factory Operations", func() {
 			nodes = append(nodes, node)
 		}
 
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		startWg := sync.WaitGroup{}
@@ -764,7 +801,7 @@ var _ = Describe("Watch Factory Operations", func() {
 			namespaces = append(namespaces, namespace)
 		}
 
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		startWg := sync.WaitGroup{}
@@ -822,7 +859,7 @@ var _ = Describe("Watch Factory Operations", func() {
 	})
 
 	It("responds to policy add/update/delete events", func() {
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		added := newPolicy("mypolicy", "default")
@@ -856,7 +893,7 @@ var _ = Describe("Watch Factory Operations", func() {
 	})
 
 	It("responds to endpoints add/update/delete events", func() {
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		added := newEndpoints("myendpoints", "default")
@@ -897,7 +934,7 @@ var _ = Describe("Watch Factory Operations", func() {
 	})
 
 	It("responds to service add/update/delete events", func() {
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		added := newService("myservice", "default")
@@ -931,7 +968,7 @@ var _ = Describe("Watch Factory Operations", func() {
 	})
 
 	It("responds to egressFirewall add/update/delete events", func() {
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		added := newEgressFirewall("myEgressFirewall", "default")
@@ -965,7 +1002,7 @@ var _ = Describe("Watch Factory Operations", func() {
 	})
 
 	It("responds to egressIP add/update/delete events", func() {
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		added := newEgressIP("myEgressIP", "default")
@@ -999,7 +1036,7 @@ var _ = Describe("Watch Factory Operations", func() {
 	})
 
 	It("stops processing events after the handler is removed", func() {
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		added := newNamespace("default")
@@ -1028,7 +1065,7 @@ var _ = Describe("Watch Factory Operations", func() {
 	})
 
 	It("filters correctly by label and namespace", func() {
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		passesFilter := newPod("pod1", "default")
@@ -1092,7 +1129,7 @@ var _ = Describe("Watch Factory Operations", func() {
 	})
 
 	It("correctly handles object updates that cause filter changes", func() {
-		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop)
+		wf, err := NewWatchFactory(fakeClient, egressFirewallFakeClient, egressIPFakeClient, stop, &config.Kubernetes)
 		Expect(err).NotTo(HaveOccurred())
 
 		pod := newPod("pod1", "default")

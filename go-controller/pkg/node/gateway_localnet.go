@@ -221,7 +221,9 @@ func initLocalnetGateway(nodeName string, subnet *net.IPNet, wf *factory.WatchFa
 		err = localnetNodePortWatcher(ipt, wf, gatewayIP)
 	}
 
-	err = localnetEgressIPWatcher(ipt, wf)
+	if config.Kubernetes.EgressIPEnabled {
+		err = localnetEgressIPWatcher(ipt, wf)
+	}
 
 	return err
 }

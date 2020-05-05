@@ -61,7 +61,7 @@ func (o *FakeOVN) init() {
 	o.stopChan = make(chan struct{})
 	egressFirewallFakeClient := &egressfirewallfake.Clientset{}
 	egressIPFakeClient := &egressipfake.Clientset{}
-	o.watcher, err = factory.NewWatchFactory(o.fakeClient, egressFirewallFakeClient, egressIPFakeClient, o.stopChan)
+	o.watcher, err = factory.NewWatchFactory(o.fakeClient, egressFirewallFakeClient, egressIPFakeClient, o.stopChan, &config.Kubernetes)
 	Expect(err).NotTo(HaveOccurred())
 
 	o.controller = NewOvnController(o.fakeClient, o.watcher, o.stopChan)
