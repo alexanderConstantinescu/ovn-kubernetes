@@ -12,6 +12,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/record"
 
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/factory"
@@ -141,7 +142,7 @@ cookie=0x0, duration=8366.597s, table=1, n_packets=10641, n_bytes=10370087, prio
 		Expect(err).NotTo(HaveOccurred())
 		defer close(stop)
 
-		n := NewNode(nil, wf, existingNode.Name, stop)
+		n := NewNode(nil, wf, existingNode.Name, stop, record.NewFakeRecorder(0))
 
 		ipt, err := util.NewFakeWithProtocol(iptables.ProtocolIPv4)
 		Expect(err).NotTo(HaveOccurred())
@@ -282,7 +283,16 @@ var _ = Describe("Gateway Init Operations", func() {
 				Cmd:    "ovs-vsctl --timeout=15 --if-exists get Open_vSwitch . external_ids:system-id",
 				Output: systemID,
 			})
-
+			fexec.AddFakeCmd(&ovntest.ExpectedCmd{
+				Cmd: "ip rule",
+				Output: "0:	from all lookup local\n32766:	from all lookup main\n32767:	from all lookup default\n",
+			})
+			fexec.AddFakeCmdsNoOutputNoError([]string{
+				"ip rule add from all table " + localnetGatwayExternalIDTable,
+			})
+			fexec.AddFakeCmdsNoOutputNoError([]string{
+				"ip route list table " + localnetGatwayExternalIDTable,
+			})
 			err := util.SetExec(fexec)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -313,7 +323,7 @@ var _ = Describe("Gateway Init Operations", func() {
 			err = testNS.Do(func(ns.NetNS) error {
 				defer GinkgoRecover()
 
-				err = initLocalnetGateway(nodeName, ovntest.MustParseIPNet(nodeSubnet), wf, nodeAnnotator)
+				err = initLocalnetGateway(nodeName, ovntest.MustParseIPNet(nodeSubnet), wf, nodeAnnotator, record.NewFakeRecorder(0))
 				Expect(err).NotTo(HaveOccurred())
 				// Check if IP has been assigned to LocalnetGatewayNextHopPort
 				link, err := netlink.LinkByName(localnetGatewayNextHopPort)
@@ -342,23 +352,28 @@ var _ = Describe("Gateway Init Operations", func() {
 						"-i " + localnetGatewayNextHopPort + " -m comment --comment from OVN to localhost -j ACCEPT",
 					},
 					"FORWARD": []string{
+						"-j OVN-KUBE-EXTERNALIP",
 						"-j OVN-KUBE-NODEPORT",
 						"-o " + localnetGatewayNextHopPort + " -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
 						"-i " + localnetGatewayNextHopPort + " -j ACCEPT",
 					},
-					"OVN-KUBE-NODEPORT": []string{},
+					"OVN-KUBE-NODEPORT":   []string{},
+					"OVN-KUBE-EXTERNALIP": []string{},
 				},
 				"nat": {
 					"POSTROUTING": []string{
 						"-s 169.254.33.2 -j MASQUERADE",
 					},
 					"PREROUTING": []string{
+						"-j OVN-KUBE-EXTERNALIP",
 						"-j OVN-KUBE-NODEPORT",
 					},
 					"OUTPUT": []string{
+						"-j OVN-KUBE-EXTERNALIP",
 						"-j OVN-KUBE-NODEPORT",
 					},
-					"OVN-KUBE-NODEPORT": []string{},
+					"OVN-KUBE-NODEPORT":   []string{},
+					"OVN-KUBE-EXTERNALIP": []string{},
 				},
 			}
 			Expect(ipt.MatchState(expectedTables)).NotTo(HaveOccurred())

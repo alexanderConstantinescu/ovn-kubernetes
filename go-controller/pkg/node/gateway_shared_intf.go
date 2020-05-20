@@ -29,8 +29,7 @@ func addService(service *kapi.Service, inport, outport, gwBridge string) {
 	}
 
 	for _, svcPort := range service.Spec.Ports {
-		_, err := util.ValidateProtocol(svcPort.Protocol)
-		if err != nil {
+		if err := util.ValidatePort(svcPort.Protocol, svcPort.NodePort); err != nil {
 			klog.Errorf("Skipping service add. Invalid service port %s: %v", svcPort.Name, err)
 			continue
 		}
@@ -53,12 +52,10 @@ func deleteService(service *kapi.Service, inport, gwBridge string) {
 	}
 
 	for _, svcPort := range service.Spec.Ports {
-		_, err := util.ValidateProtocol(svcPort.Protocol)
-		if err != nil {
+		if err := util.ValidatePort(svcPort.Protocol, svcPort.NodePort); err != nil {
 			klog.Errorf("Skipping service delete. Invalid service port %s: %v", svcPort.Name, err)
 			continue
 		}
-
 		protocol := strings.ToLower(string(svcPort.Protocol))
 
 		_, stderr, err := util.RunOVSOfctl("del-flows", gwBridge,
@@ -88,18 +85,12 @@ func syncServices(services []interface{}, inport, gwBridge string) {
 		}
 
 		for _, svcPort := range service.Spec.Ports {
-			port := svcPort.NodePort
-			if port == 0 {
-				continue
-			}
-
-			proto, err := util.ValidateProtocol(svcPort.Protocol)
-			if err != nil {
+			if err := util.ValidatePort(svcPort.Protocol, svcPort.NodePort); err != nil {
 				klog.Errorf("syncServices error for service port %s: %v", svcPort.Name, err)
 				continue
 			}
-			protocol := strings.ToLower(string(proto))
-			nodePortKey := fmt.Sprintf("%s_%d", protocol, port)
+			protocol := strings.ToLower(string(svcPort.Protocol))
+			nodePortKey := fmt.Sprintf("%s_%d", protocol, svcPort.NodePort)
 			nodePorts[nodePortKey] = true
 		}
 	}

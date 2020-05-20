@@ -84,7 +84,7 @@ func (n *OvnNode) initGateway(subnet *net.IPNet, nodeAnnotator kube.Annotator,
 	var prFn postWaitFunc
 	switch config.Gateway.Mode {
 	case config.GatewayModeLocal:
-		err = initLocalnetGateway(n.name, subnet, n.watchFactory, nodeAnnotator)
+		err = initLocalnetGateway(n.name, subnet, n.watchFactory, nodeAnnotator, n.recorder)
 	case config.GatewayModeShared:
 		gatewayNextHop := net.ParseIP(config.Gateway.NextHop)
 		gatewayIntf := config.Gateway.Interface

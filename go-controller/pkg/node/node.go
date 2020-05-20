@@ -22,6 +22,7 @@ import (
 	kapi "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/record"
 )
 
 // OvnNode is the object holder for utilities meant for node management
@@ -30,15 +31,17 @@ type OvnNode struct {
 	Kube         kube.Interface
 	watchFactory *factory.WatchFactory
 	stopChan     chan struct{}
+	recorder     record.EventRecorder
 }
 
 // NewNode creates a new controller for node management
-func NewNode(kubeClient kubernetes.Interface, wf *factory.WatchFactory, name string, stopChan chan struct{}) *OvnNode {
+func NewNode(kubeClient kubernetes.Interface, wf *factory.WatchFactory, name string, stopChan chan struct{}, eventRecorder record.EventRecorder) *OvnNode {
 	return &OvnNode{
 		name:         name,
 		Kube:         &kube.Kube{KClient: kubeClient},
 		watchFactory: wf,
 		stopChan:     stopChan,
+		recorder:     eventRecorder,
 	}
 }
 

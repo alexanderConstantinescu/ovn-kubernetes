@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/util"
-
 	kapi "k8s.io/api/core/v1"
+
 	utilnet "k8s.io/utils/net"
 )
 

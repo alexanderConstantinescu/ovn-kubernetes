@@ -12,6 +12,7 @@ import (
 // IPTablesHelper is an interface that wraps go-iptables to allow
 // mock implementations for unit testing
 type IPTablesHelper interface {
+	List(string, string) ([]string, error)
 	// ListChains returns the names of all chains in the table
 	ListChains(string) ([]string, error)
 	// ClearChain removes all rules in the specified table/chain.
@@ -19,7 +20,8 @@ type IPTablesHelper interface {
 	ClearChain(string, string) error
 	// DeleteChain deletes the chain in the specified table.
 	DeleteChain(string, string) error
-	// NewChain creates a new chain in the specified table
+	// NewChain creates a new chain in the specified table.
+	// If the chain already exists, it will result in an error.
 	NewChain(string, string) error
 	// Exists checks if given rulespec in specified table/chain exists
 	Exists(string, string, ...string) (bool, error)
@@ -94,6 +96,19 @@ func (f *FakeIPTables) getTable(tableName string) (*FakeTable, error) {
 		return nil, fmt.Errorf("table %s does not exist", tableName)
 	}
 	return table, nil
+}
+
+// List returns the names of all rules in the table and chain
+func (f *FakeIPTables) List(tableName, chainName string) ([]string, error) {
+	table, ok := f.tables[tableName]
+	if !ok {
+		return []string{}, fmt.Errorf("table does not exist")
+	}
+	rules, err := table.getChain(chainName)
+	if err != nil {
+		return []string{}, err
+	}
+	return rules, nil
 }
 
 // ListChains returns the names of all chains in the table
