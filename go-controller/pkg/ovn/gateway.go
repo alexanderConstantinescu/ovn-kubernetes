@@ -46,12 +46,15 @@ func (ovn *Controller) getGatewayPhysicalIPs(physicalGateway string) ([]string, 
 
 func (ovn *Controller) getGatewayLoadBalancer(physicalGateway string, protocol kapi.Protocol) (string, error) {
 	externalIDKey := string(protocol) + "_lb_gateway_router"
-	loadBalancer, _, err := util.RunOVNNbctl("--data=bare", "--no-heading",
+	loadBalancer, stderr, err := util.RunOVNNbctl("--data=bare", "--no-heading",
 		"--columns=_uuid", "find", "load_balancer",
 		"external_ids:"+externalIDKey+"="+
 			physicalGateway)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error: unable to execute ovn-nbctl command, stderr: %s, err: %v", stderr, err)
+	}
+	if loadBalancer == "" {
+		return "", fmt.Errorf("error: empty loadbalancer")
 	}
 	return loadBalancer, nil
 }
@@ -69,11 +72,7 @@ func (ovn *Controller) createGatewayVIPs(protocol kapi.Protocol, sourcePort int3
 	for _, physicalGateway := range physicalGateways {
 		loadBalancer, err := ovn.getGatewayLoadBalancer(physicalGateway, protocol)
 		if err != nil {
-			klog.Errorf("physical gateway %s does not have load_balancer (%v)",
-				physicalGateway, err)
-			continue
-		}
-		if loadBalancer == "" {
+			klog.Errorf("physical gateway: %s does not have load balancer, err: %v", physicalGateway, err)
 			continue
 		}
 		physicalIPs, err := ovn.getGatewayPhysicalIPs(physicalGateway)
@@ -103,11 +102,7 @@ func (ovn *Controller) deleteGatewayVIPs(protocol kapi.Protocol, sourcePort int3
 	for _, physicalGateway := range physicalGateways {
 		loadBalancer, err := ovn.getGatewayLoadBalancer(physicalGateway, protocol)
 		if err != nil {
-			klog.Errorf("physical gateway %s does not have load_balancer (%v)",
-				physicalGateway, err)
-			continue
-		}
-		if loadBalancer == "" {
+			klog.Errorf("physical gateway: %s does not have load balancer, err: %v", physicalGateway, err)
 			continue
 		}
 		physicalIPs, err := ovn.getGatewayPhysicalIPs(physicalGateway)

@@ -98,10 +98,7 @@ func (ovn *Controller) AddEndpoints(ep *kapi.Endpoints) error {
 				for _, gateway := range gateways {
 					loadBalancer, err := ovn.getGatewayLoadBalancer(gateway, svcPort.Protocol)
 					if err != nil {
-						klog.Errorf("physical gateway %s does not have load_balancer (%v)", gateway, err)
-						continue
-					}
-					if loadBalancer == "" {
+						klog.Errorf("physical gateway: %s does not have load balancer, err: %v", gateway, err)
 						continue
 					}
 					if err = ovn.createLoadBalancerVIPs(loadBalancer, svc.Spec.ExternalIPs, svcPort.Port, lbEps.IPs, lbEps.Port); err != nil {
@@ -144,9 +141,9 @@ func (ovn *Controller) handleNodePortLB(node *kapi.Node) error {
 				if !isFound {
 					continue
 				}
-				k8sNSLb, _ := ovn.getGatewayLoadBalancer(physicalGateway, svcPort.Protocol)
-				if k8sNSLb == "" {
-					return fmt.Errorf("%s load balancer for node %q does not yet exist", svcPort.Protocol, node.Name)
+				k8sNSLb, err := ovn.getGatewayLoadBalancer(physicalGateway, svcPort.Protocol)
+				if err != nil {
+					return fmt.Errorf("physical gateway: %s does not have load balancer, err: %v", physicalGateway, err)
 				}
 				err = ovn.createLoadBalancerVIPs(k8sNSLb, physicalIPs, svcPort.NodePort, lbEps.IPs, lbEps.Port)
 				if err != nil {

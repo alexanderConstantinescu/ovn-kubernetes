@@ -403,8 +403,8 @@ func (oc *Controller) syncGatewayLogicalNetwork(node *kapi.Node, l3GatewayConfig
 		// nodePort disabled, delete gateway load balancers for this node.
 		physicalGateway := "GR_" + node.Name
 		for _, proto := range []kapi.Protocol{kapi.ProtocolTCP, kapi.ProtocolUDP, kapi.ProtocolSCTP} {
-			lbUUID, _ := oc.getGatewayLoadBalancer(physicalGateway, proto)
-			if lbUUID != "" {
+			lbUUID, err := oc.getGatewayLoadBalancer(physicalGateway, proto)
+			if err == nil {
 				_, _, err := util.RunOVNNbctl("--if-exists", "destroy", "load_balancer", lbUUID)
 				if err != nil {
 					klog.Errorf("failed to destroy %s load balancer for gateway %s: %v", proto, physicalGateway, err)

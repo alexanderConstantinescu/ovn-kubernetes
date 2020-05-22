@@ -109,13 +109,9 @@ func (ovn *Controller) syncServices(services []interface{}) {
 		for _, protocol := range []kapi.Protocol{kapi.ProtocolTCP, kapi.ProtocolUDP, kapi.ProtocolSCTP} {
 			loadBalancer, err := ovn.getGatewayLoadBalancer(gateway, protocol)
 			if err != nil {
-				klog.Errorf("physical gateway %s does not have load_balancer (%v)", gateway, err)
+				klog.Errorf("physical gateway: %s does not have load balancer, err: %v", gateway, err)
 				continue
 			}
-			if loadBalancer == "" {
-				continue
-			}
-
 			loadBalancerVIPs, err := ovn.getLoadBalancerVIPs(loadBalancer)
 			if err != nil {
 				klog.Errorf("failed to get load-balancer vips for %s (%v)", loadBalancer, err)
@@ -204,10 +200,7 @@ func (ovn *Controller) createService(service *kapi.Service) error {
 			for _, physicalGateway := range physicalGateways {
 				loadBalancer, err := ovn.getGatewayLoadBalancer(physicalGateway, svcPort.Protocol)
 				if err != nil {
-					klog.Errorf("physical gateway %s does not have load_balancer (%v)", physicalGateway, err)
-					continue
-				}
-				if loadBalancer == "" {
+					klog.Errorf("physical gateway: %s does not have load balancer, err: %v", physicalGateway, err)
 					continue
 				}
 				physicalIPs, err := ovn.getGatewayPhysicalIPs(physicalGateway)
@@ -267,10 +260,7 @@ func (ovn *Controller) createService(service *kapi.Service) error {
 					for _, gateway := range gateways {
 						loadBalancer, err := ovn.getGatewayLoadBalancer(gateway, svcPort.Protocol)
 						if err != nil {
-							klog.Errorf("physical gateway %s does not have load_balancer (%v)", gateway, err)
-							continue
-						}
-						if loadBalancer == "" {
+							klog.Errorf("physical gateway: %s does not have load balancer, err: %v", gateway, err)
 							continue
 						}
 						vip := util.JoinHostPortInt32(extIP, svcPort.Port)
