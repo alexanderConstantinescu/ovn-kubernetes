@@ -81,8 +81,7 @@ func (ovn *Controller) createGatewayVIPs(protocol kapi.Protocol, sourcePort int3
 		}
 		physicalIPs, err := ovn.getGatewayPhysicalIPs(physicalGateway)
 		if err != nil {
-			klog.Errorf("physical gateway %s does not have physical ip (%v)",
-				physicalGateway, err)
+			klog.Errorf("physical gateway %s does not have physical ip (%v)", physicalGateway, err)
 			continue
 		}
 		// With the physical_ip:sourcePort as the VIP, add an entry in
@@ -116,8 +115,7 @@ func (ovn *Controller) deleteGatewayVIPs(protocol kapi.Protocol, sourcePort int3
 		}
 		physicalIPs, err := ovn.getGatewayPhysicalIPs(physicalGateway)
 		if err != nil {
-			klog.Errorf("physical gateway %s does not have physical ip (%v)",
-				physicalGateway, err)
+			klog.Errorf("physical gateway %s does not have physical ip (%v)", physicalGateway, err)
 			continue
 		}
 		for _, physicalIP := range physicalIPs {
