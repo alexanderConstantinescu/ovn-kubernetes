@@ -328,7 +328,7 @@ func (ovn *Controller) updateService(oldSvc, newSvc *kapi.Service) error {
 }
 
 func (ovn *Controller) deleteService(service *kapi.Service) {
-	if !util.IsClusterIPSet(service) || len(service.Spec.Ports) == 0 {
+	if !util.IsClusterIPSet(service) {
 		return
 	}
 
@@ -360,9 +360,8 @@ func (ovn *Controller) deleteService(service *kapi.Service) {
 		if util.ServiceTypeHasClusterIP(service) {
 			loadBalancer, err := ovn.getLoadBalancer(protocol)
 			if err != nil {
-				klog.Errorf("Failed to get load-balancer for %s (%v)",
-					protocol, err)
-				break
+				klog.Errorf("Failed to get load-balancer for %s (%v)", svcPort.Protocol, err)
+				continue
 			}
 			vip := util.JoinHostPortInt32(service.Spec.ClusterIP, svcPort.Port)
 			ovn.deleteLoadBalancerVIP(loadBalancer, vip)
