@@ -12,6 +12,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
+	egressipfake "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1/apis/clientset/versioned/fake"
+
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/factory"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/kube"
@@ -284,6 +286,7 @@ var _ = Describe("Master Operations", func() {
 			fakeClient := fake.NewSimpleClientset(&v1.NodeList{
 				Items: []v1.Node{testNode},
 			})
+			egressIPFakeClient := &egressipfake.Clientset{}
 
 			err := util.SetExec(fexec)
 			Expect(err).NotTo(HaveOccurred())
@@ -303,7 +306,7 @@ var _ = Describe("Master Operations", func() {
 			err = nodeAnnotator.Run()
 			Expect(err).NotTo(HaveOccurred())
 
-			f, err = factory.NewWatchFactory(fakeClient)
+			f, err = factory.NewWatchFactory(fakeClient, egressIPFakeClient)
 			Expect(err).NotTo(HaveOccurred())
 
 			clusterController := NewOvnController(fakeClient, f, stopChan,
@@ -374,6 +377,7 @@ var _ = Describe("Master Operations", func() {
 			fakeClient := fake.NewSimpleClientset(&v1.NodeList{
 				Items: []v1.Node{testNode},
 			})
+			egressIPFakeClient := &egressipfake.Clientset{}
 
 			err := util.SetExec(fexec)
 			Expect(err).NotTo(HaveOccurred())
@@ -393,7 +397,7 @@ var _ = Describe("Master Operations", func() {
 			err = nodeAnnotator.Run()
 			Expect(err).NotTo(HaveOccurred())
 
-			f, err = factory.NewWatchFactory(fakeClient)
+			f, err = factory.NewWatchFactory(fakeClient, egressIPFakeClient)
 			Expect(err).NotTo(HaveOccurred())
 
 			clusterController := NewOvnController(fakeClient, f, stopChan,
@@ -460,6 +464,7 @@ var _ = Describe("Master Operations", func() {
 			fakeClient := fake.NewSimpleClientset(&v1.NodeList{
 				Items: []v1.Node{testNode},
 			})
+			egressIPFakeClient := &egressipfake.Clientset{}
 
 			fexec, tcpLBUUID, udpLBUUID, sctpLBUUID := defaultFakeExec(nodeSubnet, nodeName, true)
 			err := util.SetExec(fexec)
@@ -481,7 +486,7 @@ var _ = Describe("Master Operations", func() {
 			err = nodeAnnotator.Run()
 			Expect(err).NotTo(HaveOccurred())
 
-			f, err = factory.NewWatchFactory(fakeClient)
+			f, err = factory.NewWatchFactory(fakeClient, egressIPFakeClient)
 			Expect(err).NotTo(HaveOccurred())
 
 			clusterController := NewOvnController(fakeClient, f, stopChan,
@@ -609,6 +614,7 @@ subnet=%s
 			fakeClient := fake.NewSimpleClientset(&v1.NodeList{
 				Items: []v1.Node{masterNode},
 			})
+			egressIPFakeClient := &egressipfake.Clientset{}
 
 			err := util.SetExec(fexec)
 			Expect(err).NotTo(HaveOccurred())
@@ -626,7 +632,7 @@ subnet=%s
 			err = nodeAnnotator.Run()
 			Expect(err).NotTo(HaveOccurred())
 
-			f, err = factory.NewWatchFactory(fakeClient)
+			f, err = factory.NewWatchFactory(fakeClient, egressIPFakeClient)
 			Expect(err).NotTo(HaveOccurred())
 
 			clusterController := NewOvnController(fakeClient, f, stopChan,
@@ -736,6 +742,7 @@ var _ = Describe("Gateway Init Operations", func() {
 			fakeClient := fake.NewSimpleClientset(&v1.NodeList{
 				Items: []v1.Node{testNode},
 			})
+			egressIPFakeClient := &egressipfake.Clientset{}
 
 			fexec := ovntest.NewFakeExec()
 			err := util.SetExec(fexec)
@@ -848,7 +855,7 @@ var _ = Describe("Gateway Init Operations", func() {
 				Output: "169.254.33.2",
 			})
 
-			f, err = factory.NewWatchFactory(fakeClient)
+			f, err = factory.NewWatchFactory(fakeClient, egressIPFakeClient)
 			Expect(err).NotTo(HaveOccurred())
 
 			clusterController := NewOvnController(fakeClient, f, stopChan, newFakeAddressSetFactory(),
@@ -920,6 +927,7 @@ var _ = Describe("Gateway Init Operations", func() {
 			fakeClient := fake.NewSimpleClientset(&v1.NodeList{
 				Items: []v1.Node{testNode},
 			})
+			egressIPFakeClient := &egressipfake.Clientset{}
 
 			fexec := ovntest.NewFakeExec()
 			err := util.SetExec(fexec)
@@ -1042,7 +1050,7 @@ var _ = Describe("Gateway Init Operations", func() {
 				Output: "169.254.33.2",
 			})
 
-			f, err = factory.NewWatchFactory(fakeClient)
+			f, err = factory.NewWatchFactory(fakeClient, egressIPFakeClient)
 			Expect(err).NotTo(HaveOccurred())
 
 			clusterController := NewOvnController(fakeClient, f, stopChan,

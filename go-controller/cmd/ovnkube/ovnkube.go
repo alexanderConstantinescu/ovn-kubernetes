@@ -189,13 +189,13 @@ func runOvnKube(ctx *cli.Context) error {
 		return fmt.Errorf("failed to initialize exec helper: %v", err)
 	}
 
-	clientset, err := util.NewClientset(&config.Kubernetes)
+	clientset, egressIPClientset, err := util.NewClientset(&config.Kubernetes)
 	if err != nil {
 		return err
 	}
 
 	// create factory and start the controllers asked for
-	factory, err := factory.NewWatchFactory(clientset)
+	factory, err := factory.NewWatchFactory(clientset, egressIPClientset)
 	if err != nil {
 		return err
 	}

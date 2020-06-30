@@ -10,6 +10,12 @@ import (
 
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/metrics"
 
+	egressipapi "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1"
+	egressipclientset "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1/apis/clientset/versioned"
+	egressipscheme "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1/apis/clientset/versioned/scheme"
+	egressipinformerfactory "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1/apis/informers/externalversions"
+	egressiplister "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1/apis/listers/egressip/v1"
+
 	kapi "k8s.io/api/core/v1"
 	knet "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -300,6 +306,8 @@ func newInformerLister(oType reflect.Type, sharedInformer cache.SharedIndexInfor
 		return listers.NewNodeLister(sharedInformer.GetIndexer()), nil
 	case policyType:
 		return nil, nil
+	case egressIPType:
+		return egressiplister.NewEgressIPLister(sharedInformer.GetIndexer()), nil
 	}
 
 	return nil, fmt.Errorf("cannot create lister from type %v", oType)
@@ -390,8 +398,9 @@ type WatchFactory struct {
 	// requirements with atomic accesses
 	handlerCounter uint64
 
-	iFactory  informerfactory.SharedInformerFactory
-	informers map[reflect.Type]*informer
+	iFactory   informerfactory.SharedInformerFactory
+	eipFactory egressipinformerfactory.SharedInformerFactory
+	informers  map[reflect.Type]*informer
 
 	stopChan chan struct{}
 }
@@ -429,21 +438,29 @@ var (
 	policyType    reflect.Type = reflect.TypeOf(&knet.NetworkPolicy{})
 	namespaceType reflect.Type = reflect.TypeOf(&kapi.Namespace{})
 	nodeType      reflect.Type = reflect.TypeOf(&kapi.Node{})
+	egressIPType  reflect.Type = reflect.TypeOf(&egressipapi.EgressIP{})
 )
 
 // NewWatchFactory initializes a new watch factory
-func NewWatchFactory(c kubernetes.Interface) (*WatchFactory, error) {
+func NewWatchFactory(c kubernetes.Interface, eip egressipclientset.Interface) (*WatchFactory, error) {
 	// resync time is 12 hours, none of the resources being watched in ovn-kubernetes have
 	// any race condition where a resync may be required e.g. cni executable on node watching for
 	// events on pods and assuming that an 'ADD' event will contain the annotations put in by
 	// ovnkube master (currently, it is just a 'get' loop)
 	// the downside of making it tight (like 10 minutes) is needless spinning on all resources
 	wf := &WatchFactory{
-		iFactory:  informerfactory.NewSharedInformerFactory(c, resyncInterval),
-		informers: make(map[reflect.Type]*informer),
-		stopChan:  make(chan struct{}),
+		iFactory:   informerfactory.NewSharedInformerFactory(c, resyncInterval),
+		eipFactory: egressipinformerfactory.NewSharedInformerFactory(eip, resyncInterval),
+		informers:  make(map[reflect.Type]*informer),
+		stopChan:   make(chan struct{}),
 	}
 	var err error
+
+	err = egressipapi.AddToScheme(egressipscheme.Scheme)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create shared informers we know we'll use
 	wf.informers[podType], err = newQueuedInformer(podType, wf.iFactory.Core().V1().Pods().Informer(), wf.stopChan)
 	if err != nil {
@@ -469,8 +486,14 @@ func NewWatchFactory(c kubernetes.Interface) (*WatchFactory, error) {
 	if err != nil {
 		return nil, err
 	}
+	wf.informers[egressIPType], err = newInformer(egressIPType, wf.eipFactory.K8s().V1().EgressIPs().Informer())
+	if err != nil {
+		return nil, err
+	}
 
+	wf.eipFactory.Start(wf.stopChan)
 	wf.iFactory.Start(wf.stopChan)
+
 	for oType, synced := range wf.iFactory.WaitForCacheSync(wf.stopChan) {
 		if !synced {
 			return nil, fmt.Errorf("error in syncing cache for %v informer", oType)
@@ -514,6 +537,10 @@ func getObjectMeta(objType reflect.Type, obj interface{}) (*metav1.ObjectMeta, e
 	case nodeType:
 		if node, ok := obj.(*kapi.Node); ok {
 			return &node.ObjectMeta, nil
+		}
+	case egressIPType:
+		if egressIP, ok := obj.(*egressipapi.EgressIP); ok {
+			return &egressIP.ObjectMeta, nil
 		}
 	}
 	return nil, fmt.Errorf("cannot get ObjectMeta from type %v", objType)
@@ -627,6 +654,16 @@ func (wf *WatchFactory) RemovePolicyHandler(handler *Handler) error {
 	return wf.removeHandler(policyType, handler)
 }
 
+// AddEgressIPHandler adds a handler function that will be executed on EgressIP object changes
+func (wf *WatchFactory) AddEgressIPHandler(handlerFuncs cache.ResourceEventHandler, processExisting func([]interface{})) (*Handler, error) {
+	return wf.addHandler(egressIPType, "", nil, handlerFuncs, processExisting)
+}
+
+// RemoveEgressIPHandler removes an EgressIP object event handler function
+func (wf *WatchFactory) RemoveEgressIPHandler(handler *Handler) error {
+	return wf.removeHandler(egressIPType, handler)
+}
+
 // AddNamespaceHandler adds a handler function that will be executed on Namespace object changes
 func (wf *WatchFactory) AddNamespaceHandler(handlerFuncs cache.ResourceEventHandler, processExisting func([]interface{})) (*Handler, error) {
 	return wf.addHandler(namespaceType, "", nil, handlerFuncs, processExisting)
@@ -645,6 +682,11 @@ func (wf *WatchFactory) RemoveNamespaceHandler(handler *Handler) error {
 // AddNodeHandler adds a handler function that will be executed on Node object changes
 func (wf *WatchFactory) AddNodeHandler(handlerFuncs cache.ResourceEventHandler, processExisting func([]interface{})) (*Handler, error) {
 	return wf.addHandler(nodeType, "", nil, handlerFuncs, processExisting)
+}
+
+// AddFilteredNodeHandler dds a handler function that will be executed when Node objects that match the given label selector
+func (wf *WatchFactory) AddFilteredNodeHandler(lsel *metav1.LabelSelector, handlerFuncs cache.ResourceEventHandler, processExisting func([]interface{})) (*Handler, error) {
+	return wf.addHandler(nodeType, "", lsel, handlerFuncs, processExisting)
 }
 
 // RemoveNodeHandler removes a Node object event handler function
