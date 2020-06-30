@@ -31,20 +31,24 @@ func getPodAnnotations(fakeClient *fake.Clientset, namespace, name string) strin
 	return pod.Annotations[util.OvnPodAnnotationName]
 }
 
-func newPodMeta(namespace, name string) metav1.ObjectMeta {
+func newPodMeta(namespace, name string, additionalLabels map[string]string) metav1.ObjectMeta {
+	labels := map[string]string{
+		"name": name,
+	}
+	for k, v := range additionalLabels {
+		labels[k] = v
+	}
 	return metav1.ObjectMeta{
 		Name:      name,
 		UID:       types.UID(name),
 		Namespace: namespace,
-		Labels: map[string]string{
-			"name": name,
-		},
+		Labels:    labels,
 	}
 }
 
-func newPod(namespace, name, node, podIP string) *v1.Pod {
+func newPod(namespace, name, node, podIP string, additionalLabels map[string]string) *v1.Pod {
 	return &v1.Pod{
-		ObjectMeta: newPodMeta(namespace, name),
+		ObjectMeta: newPodMeta(namespace, name, additionalLabels),
 		Spec: v1.PodSpec{
 			Containers: []v1.Container{
 				{
@@ -201,7 +205,7 @@ var _ = Describe("OVN Pod Operations", func() {
 
 				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{
-						*newPod(t.namespace, t.podName, t.nodeName, t.podIP),
+						*newPod(t.namespace, t.podName, t.nodeName, t.podIP, nil),
 					},
 				})
 				fakeOvn.controller.WatchPods()
@@ -218,7 +222,7 @@ var _ = Describe("OVN Pod Operations", func() {
 				t.portName = t.namespace + "_" + t.podName
 				t.populateLogicalSwitchCache(fakeOvn)
 
-				_, err = fakeOvn.fakeClient.CoreV1().Pods(t.namespace).Update(context.TODO(), newPod(t.namespace, t.podName, t.nodeName, t.podIP), metav1.UpdateOptions{})
+				_, err = fakeOvn.fakeClient.CoreV1().Pods(t.namespace).Update(context.TODO(), newPod(t.namespace, t.podName, t.nodeName, t.podIP, nil), metav1.UpdateOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				t.addPodDenyMcast(fExec)
 				Eventually(fExec.CalledMatchesExpected).Should(BeTrue(), fExec.ErrorDesc)
@@ -260,7 +264,7 @@ var _ = Describe("OVN Pod Operations", func() {
 
 				t.addPodDenyMcast(fExec)
 
-				_, err := fakeOvn.fakeClient.CoreV1().Pods(t.namespace).Create(context.TODO(), newPod(t.namespace, t.podName, t.nodeName, t.podIP), metav1.CreateOptions{})
+				_, err := fakeOvn.fakeClient.CoreV1().Pods(t.namespace).Create(context.TODO(), newPod(t.namespace, t.podName, t.nodeName, t.podIP, nil), metav1.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				Eventually(fExec.CalledMatchesExpected).Should(BeTrue(), fExec.ErrorDesc)
 
@@ -296,7 +300,7 @@ var _ = Describe("OVN Pod Operations", func() {
 
 				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{
-						*newPod(t.namespace, t.podName, t.nodeName, t.podIP),
+						*newPod(t.namespace, t.podName, t.nodeName, t.podIP, nil),
 					},
 				})
 				t.populateLogicalSwitchCache(fakeOvn)
@@ -345,7 +349,7 @@ var _ = Describe("OVN Pod Operations", func() {
 
 				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{
-						*newPod(t.namespace, t.podName, t.nodeName, t.podIP),
+						*newPod(t.namespace, t.podName, t.nodeName, t.podIP, nil),
 					},
 				})
 				t.populateLogicalSwitchCache(fakeOvn)
@@ -361,7 +365,7 @@ var _ = Describe("OVN Pod Operations", func() {
 
 				// Pod creation should be retried on Update event
 				t.addPodDenyMcast(fExec)
-				_, err := fakeOvn.fakeClient.CoreV1().Pods(t.namespace).Update(context.TODO(), newPod(t.namespace, t.podName, t.nodeName, t.podIP), metav1.UpdateOptions{})
+				_, err := fakeOvn.fakeClient.CoreV1().Pods(t.namespace).Update(context.TODO(), newPod(t.namespace, t.podName, t.nodeName, t.podIP, nil), metav1.UpdateOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				Eventually(fExec.CalledMatchesExpected).Should(BeTrue(), fExec.ErrorDesc)
 				Eventually(func() string { return getPodAnnotations(fakeOvn.fakeClient, t.namespace, t.podName) }, 2).Should(MatchJSON(`{"default": {"ip_addresses":["` + t.podIP + `/24"], "mac_address":"` + t.podMAC + `", "gateway_ips": ["` + t.nodeGWIP + `"], "ip_address":"` + t.podIP + `/24", "gateway_ip": "` + t.nodeGWIP + `"}}`))
@@ -401,7 +405,7 @@ var _ = Describe("OVN Pod Operations", func() {
 
 				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{
-						*newPod(t.namespace, t.podName, t.nodeName, t.podIP),
+						*newPod(t.namespace, t.podName, t.nodeName, t.podIP, nil),
 					},
 				})
 				t.populateLogicalSwitchCache(fakeOvn)
@@ -477,7 +481,7 @@ var _ = Describe("OVN Pod Operations", func() {
 
 				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{
-						*newPod(t.namespace, t.podName, t.nodeName, t.podIP),
+						*newPod(t.namespace, t.podName, t.nodeName, t.podIP, nil),
 					},
 				})
 				t.populateLogicalSwitchCache(fakeOvn)
@@ -517,7 +521,7 @@ var _ = Describe("OVN Pod Operations", func() {
 
 				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{
-						*newPod(t.namespace, t.podName, t.nodeName, t.podIP),
+						*newPod(t.namespace, t.podName, t.nodeName, t.podIP, nil),
 					},
 				})
 				t.populateLogicalSwitchCache(fakeOvn)
@@ -570,7 +574,7 @@ var _ = Describe("OVN Pod Operations", func() {
 
 				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{
-						*newPod(t.namespace, t.podName, t.nodeName, t.podIP),
+						*newPod(t.namespace, t.podName, t.nodeName, t.podIP, nil),
 					},
 				})
 				t.populateLogicalSwitchCache(fakeOvn)
@@ -605,7 +609,7 @@ var _ = Describe("OVN Pod Operations", func() {
 	Context("with hybrid overlay gw mode", func() {
 		It("resets the hybrid annotations on update", func() {
 			app.Action = func(ctx *cli.Context) error {
-				namespaceT := *newNamespace("namespace1")
+				namespaceT := *newNamespace("namespace1", nil)
 				namespaceT.Annotations[hotypes.HybridOverlayVTEP] = "1.1.1.1"
 				namespaceT.Annotations[hotypes.HybridOverlayExternalGw] = "2.2.2.2"
 				tP := newTPod(
@@ -627,7 +631,7 @@ var _ = Describe("OVN Pod Operations", func() {
 					},
 					&v1.PodList{
 						Items: []v1.Pod{
-							*newPod(namespaceT.Name, tP.podName, tP.nodeName, tP.podIP),
+							*newPod(namespaceT.Name, tP.podName, tP.nodeName, tP.podIP, nil),
 						},
 					},
 				)
@@ -672,7 +676,7 @@ var _ = Describe("OVN Pod Operations", func() {
 					namespaceT.Name,
 				)
 				tP.addPodDenyMcast(fExec)
-				pod, err = fakeOvn.fakeClient.CoreV1().Pods(tP.namespace).Create(context.TODO(), newPod(namespaceT.Name, tP.podName, tP.nodeName, tP.podIP), metav1.CreateOptions{})
+				pod, err = fakeOvn.fakeClient.CoreV1().Pods(tP.namespace).Create(context.TODO(), newPod(namespaceT.Name, tP.podName, tP.nodeName, tP.podIP, nil), metav1.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				var annotation string
 				Eventually(func() string {

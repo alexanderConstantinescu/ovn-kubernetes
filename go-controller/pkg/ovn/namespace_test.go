@@ -17,20 +17,24 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func newNamespaceMeta(namespace string) metav1.ObjectMeta {
+func newNamespaceMeta(namespace string, additionalLabels map[string]string) metav1.ObjectMeta {
+	labels := map[string]string{
+		"name": namespace,
+	}
+	for k, v := range additionalLabels {
+		labels[k] = v
+	}
 	return metav1.ObjectMeta{
-		UID:  types.UID(namespace),
-		Name: namespace,
-		Labels: map[string]string{
-			"name": namespace,
-		},
+		UID:         types.UID(namespace),
+		Name:        namespace,
+		Labels:      labels,
 		Annotations: map[string]string{},
 	}
 }
 
-func newNamespace(namespace string) *v1.Namespace {
+func newNamespace(namespace string, additionalLabels map[string]string) *v1.Namespace {
 	return &v1.Namespace{
-		ObjectMeta: newNamespaceMeta(namespace),
+		ObjectMeta: newNamespaceMeta(namespace, additionalLabels),
 		Spec:       v1.NamespaceSpec{},
 		Status:     v1.NamespaceStatus{},
 	}
@@ -66,7 +70,7 @@ var _ = Describe("OVN Namespace Operations", func() {
 
 		It("reconciles an existing namespace with pods", func() {
 			app.Action = func(ctx *cli.Context) error {
-				namespaceT := *newNamespace(namespaceName)
+				namespaceT := *newNamespace(namespaceName, nil)
 				tP := newTPod(
 					"node1",
 					"10.128.1.0/24",
@@ -86,7 +90,7 @@ var _ = Describe("OVN Namespace Operations", func() {
 					},
 					&v1.PodList{
 						Items: []v1.Pod{
-							*newPod(namespaceT.Name, tP.podName, tP.nodeName, tP.podIP),
+							*newPod(namespaceT.Name, tP.podName, tP.nodeName, tP.podIP, nil),
 						},
 					},
 				)
@@ -112,7 +116,7 @@ var _ = Describe("OVN Namespace Operations", func() {
 			app.Action = func(ctx *cli.Context) error {
 				fakeOvn.start(ctx, nil, &v1.NamespaceList{
 					Items: []v1.Namespace{
-						*newNamespace("namespace1"),
+						*newNamespace("namespace1", nil),
 					},
 				})
 				fakeOvn.controller.WatchNamespaces()
@@ -136,7 +140,7 @@ var _ = Describe("OVN Namespace Operations", func() {
 			app.Action = func(ctx *cli.Context) error {
 				fakeOvn.start(ctx, nil, &v1.NamespaceList{
 					Items: []v1.Namespace{
-						*newNamespace(namespaceName),
+						*newNamespace(namespaceName, nil),
 					},
 				})
 				fakeOvn.controller.WatchNamespaces()

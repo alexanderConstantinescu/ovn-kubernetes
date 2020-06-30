@@ -325,8 +325,8 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 
 				npTest := networkPolicy{}
 
-				namespace1 := *newNamespace(namespaceName1)
-				namespace2 := *newNamespace(namespaceName2)
+				namespace1 := *newNamespace(namespaceName1, nil)
+				namespace2 := *newNamespace(namespaceName2, nil)
 				networkPolicy := newNetworkPolicy("networkpolicy1", namespace1.Name,
 					metav1.LabelSelector{},
 					[]knet.NetworkPolicyIngressRule{
@@ -398,7 +398,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 
 				npTest := networkPolicy{}
 
-				namespace1 := *newNamespace(namespaceName1)
+				namespace1 := *newNamespace(namespaceName1, nil)
 
 				nPodTest := newTPod(
 					"node1",
@@ -452,7 +452,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 					},
 					&v1.PodList{
 						Items: []v1.Pod{
-							*newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP),
+							*newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP, nil),
 						},
 					},
 					&knet.NetworkPolicyList{
@@ -486,8 +486,8 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 
 				npTest := networkPolicy{}
 
-				namespace1 := *newNamespace(namespaceName1)
-				namespace2 := *newNamespace(namespaceName2)
+				namespace1 := *newNamespace(namespaceName1, nil)
+				namespace2 := *newNamespace(namespaceName2, nil)
 
 				nPodTest := newTPod(
 					"node2",
@@ -551,7 +551,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 					},
 					&v1.PodList{
 						Items: []v1.Pod{
-							*newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP),
+							*newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP, nil),
 						},
 					},
 					&knet.NetworkPolicyList{
@@ -590,7 +590,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 			app.Action = func(ctx *cli.Context) error {
 				npTest := networkPolicy{}
 
-				namespace1 := *newNamespace(namespaceName1)
+				namespace1 := *newNamespace(namespaceName1, nil)
 				nPodTest := newTPod(
 					"node1",
 					"10.128.1.0/24",
@@ -601,7 +601,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 					"0a:58:0a:80:01:03",
 					namespace1.Name,
 				)
-				nPod := newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP)
+				nPod := newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP, nil)
 
 				const (
 					labelName string = "pod-name"
@@ -678,8 +678,8 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 
 				npTest := networkPolicy{}
 
-				namespace1 := *newNamespace(namespaceName1)
-				namespace2 := *newNamespace(namespaceName2)
+				namespace1 := *newNamespace(namespaceName1, nil)
+				namespace2 := *newNamespace(namespaceName2, nil)
 
 				nPodTest := newTPod(
 					"node1",
@@ -735,7 +735,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 					},
 					&v1.PodList{
 						Items: []v1.Pod{
-							*newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP),
+							*newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP, nil),
 						},
 					},
 					&knet.NetworkPolicyList{
@@ -784,8 +784,8 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 
 				npTest := networkPolicy{}
 
-				namespace1 := *newNamespace(namespaceName1)
-				namespace2 := *newNamespace(namespaceName2)
+				namespace1 := *newNamespace(namespaceName1, nil)
+				namespace2 := *newNamespace(namespaceName2, nil)
 				networkPolicy := newNetworkPolicy("networkpolicy1", namespace1.Name,
 					metav1.LabelSelector{},
 					[]knet.NetworkPolicyIngressRule{
@@ -866,7 +866,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 
 				npTest := networkPolicy{}
 
-				namespace1 := *newNamespace(namespaceName1)
+				namespace1 := *newNamespace(namespaceName1, nil)
 
 				nPodTest := newTPod(
 					"node1",
@@ -920,7 +920,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 					},
 					&v1.PodList{
 						Items: []v1.Pod{
-							*newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP),
+							*newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP, nil),
 						},
 					},
 					&knet.NetworkPolicyList{
@@ -963,8 +963,8 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 
 				npTest := networkPolicy{}
 
-				namespace1 := *newNamespace(namespaceName1)
-				namespace2 := *newNamespace(namespaceName2)
+				namespace1 := *newNamespace(namespaceName1, nil)
+				namespace2 := *newNamespace(namespaceName2, nil)
 
 				nPodTest := newTPod(
 					"node1",
@@ -1028,7 +1028,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 					},
 					&v1.PodList{
 						Items: []v1.Pod{
-							*newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP),
+							*newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP, nil),
 						},
 					},
 					&knet.NetworkPolicyList{
@@ -1074,7 +1074,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 
 				npTest := networkPolicy{}
 
-				namespace1 := *newNamespace(namespaceName1)
+				namespace1 := *newNamespace(namespaceName1, nil)
 
 				nPodTest := newTPod(
 					"node1",
@@ -1128,7 +1128,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 					},
 					&v1.PodList{
 						Items: []v1.Pod{
-							*newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP),
+							*newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP, nil),
 						},
 					},
 					&knet.NetworkPolicyList{
@@ -1164,7 +1164,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 
 		It("tests enabling/disabling multicast in a namespace", func() {
 			app.Action = func(ctx *cli.Context) error {
-				namespace1 := *newNamespace(namespaceName1)
+				namespace1 := *newNamespace(namespaceName1, nil)
 
 				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
@@ -1207,7 +1207,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 
 		It("tests enabling multicast in a namespace with a pod", func() {
 			app.Action = func(ctx *cli.Context) error {
-				namespace1 := *newNamespace(namespaceName1)
+				namespace1 := *newNamespace(namespaceName1, nil)
 
 				nPodTest := newTPod(
 					"node1",
@@ -1230,7 +1230,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 					},
 					&v1.PodList{
 						Items: []v1.Pod{
-							*newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP),
+							*newPod(nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP, nil),
 						},
 					},
 				)
@@ -1262,7 +1262,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 
 		It("tests adding a pod to a multicast enabled namespace", func() {
 			app.Action = func(ctx *cli.Context) error {
-				namespace1 := *newNamespace(namespaceName1)
+				namespace1 := *newNamespace(namespaceName1, nil)
 
 				nPodTest := newTPod(
 					"node1",
@@ -1306,7 +1306,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 				mcastPolicy.addPodCmds(fExec, namespace1.Name)
 
 				_, err = fakeOvn.fakeClient.CoreV1().Pods(nPodTest.namespace).Create(context.TODO(), newPod(
-					nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP), metav1.CreateOptions{})
+					nPodTest.namespace, nPodTest.podName, nPodTest.nodeName, nPodTest.podIP, nil), metav1.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				Eventually(fExec.CalledMatchesExpected).Should(BeTrue(), fExec.ErrorDesc)
 				fakeOvn.asf.ExpectAddressSetWithIPs(v4AddressSetName1, []string{nPodTest.podIP})
