@@ -109,7 +109,7 @@ var _ = Describe("Node Operations", func() {
 					"ip route list table " + localnetGatewayExternalIDTable,
 				})
 
-				fakeOvnNode.start(ctx)
+				fakeOvnNode.start(ctx, nil)
 				fakeOvnNode.node.watchLocalPorts(fNPW)
 
 				expectedTables := map[string]util.FakeTable{
@@ -224,7 +224,7 @@ var _ = Describe("Node Operations", func() {
 				err := f4.MatchState(expectedTables)
 				Expect(err).NotTo(HaveOccurred())
 
-				fakeOvnNode.start(ctx,
+				fakeOvnNode.start(ctx, nil,
 					&v1.ServiceList{
 						Items: []v1.Service{
 							service,

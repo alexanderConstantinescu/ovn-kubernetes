@@ -14,12 +14,13 @@ import (
 )
 
 type FakeOVNNode struct {
-	node       *OvnNode
-	watcher    *factory.WatchFactory
-	stopChan   chan struct{}
-	recorder   *record.FakeRecorder
-	fakeClient *fake.Clientset
-	fakeExec   *ovntest.FakeExec
+	node             *OvnNode
+	watcher          *factory.WatchFactory
+	stopChan         chan struct{}
+	recorder         *record.FakeRecorder
+	fakeClient       *fake.Clientset
+	fakeEgressClient *egressipfake.Clientset
+	fakeExec         *ovntest.FakeExec
 }
 
 func NewFakeOVNNode(fexec *ovntest.FakeExec) *FakeOVNNode {
@@ -32,11 +33,12 @@ func NewFakeOVNNode(fexec *ovntest.FakeExec) *FakeOVNNode {
 	}
 }
 
-func (o *FakeOVNNode) start(ctx *cli.Context, objects ...runtime.Object) {
+func (o *FakeOVNNode) start(ctx *cli.Context, egressObjects []runtime.Object, objects ...runtime.Object) {
 	_, err := config.InitConfig(ctx, o.fakeExec, nil)
 	Expect(err).NotTo(HaveOccurred())
 
 	o.fakeClient = fake.NewSimpleClientset(objects...)
+	o.fakeEgressClient = egressipfake.NewSimpleClientset(egressObjects...)
 	o.init()
 }
 
@@ -53,8 +55,7 @@ func (o *FakeOVNNode) init() {
 	var err error
 
 	o.stopChan = make(chan struct{})
-	egressIPFakeClient := &egressipfake.Clientset{}
-	o.watcher, err = factory.NewWatchFactory(o.fakeClient, egressIPFakeClient)
+	o.watcher, err = factory.NewWatchFactory(o.fakeClient, o.fakeEgressClient)
 	Expect(err).NotTo(HaveOccurred())
 
 	o.node = NewNode(o.fakeClient, o.watcher, "node", o.stopChan, o.recorder)

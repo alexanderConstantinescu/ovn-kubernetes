@@ -404,7 +404,7 @@ var _ = Describe("Gateway Init Operations", func() {
 				Name: nodeName,
 			}}
 
-			fakeOvnNode.start(ctx,
+			fakeOvnNode.start(ctx, nil,
 				&v1.NodeList{
 					Items: []v1.Node{
 						existingNode,
