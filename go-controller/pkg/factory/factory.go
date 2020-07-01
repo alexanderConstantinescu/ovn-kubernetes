@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/metrics"
 
 	egressipapi "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1"
@@ -491,7 +492,10 @@ func NewWatchFactory(c kubernetes.Interface, eip egressipclientset.Interface) (*
 		return nil, err
 	}
 
-	wf.eipFactory.Start(wf.stopChan)
+	if config.Kubernetes.EgressIPEnabled {
+		wf.eipFactory.Start(wf.stopChan)
+	}
+
 	wf.iFactory.Start(wf.stopChan)
 
 	for oType, synced := range wf.iFactory.WaitForCacheSync(wf.stopChan) {

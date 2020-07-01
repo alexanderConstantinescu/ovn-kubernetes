@@ -80,6 +80,7 @@ var (
 		APIServer:          DefaultAPIServer,
 		RawServiceCIDRs:    "172.16.1.0/24",
 		OVNConfigNamespace: "ovn-kubernetes",
+		EgressIPEnabled:    true,
 	}
 
 	// OvnNorth holds northbound OVN database client and server authentication and location details
@@ -199,6 +200,7 @@ type KubernetesConfig struct {
 	OVNEmptyLbEvents     bool   `gcfg:"ovn-empty-lb-events"`
 	PodIP                string `gcfg:"pod-ip"` // UNUSED
 	RawNoHostSubnetNodes string `gcfg:"no-hostsubnet-nodes"`
+	EgressIPEnabled      bool   `gcfg:"egress-ip-enable"`
 	NoHostSubnetNodes    *metav1.LabelSelector
 }
 
@@ -643,6 +645,12 @@ var K8sFlags = []cli.Flag{
 	&cli.StringFlag{
 		Name:  "pod-ip",
 		Usage: "UNUSED",
+	},
+	&cli.BoolFlag{
+		Name:        "egress-ip-enable",
+		Usage:       "Configure to use EgressIP CRD feature with ovn-kubernetes.",
+		Destination: &cliConfig.Kubernetes.EgressIPEnabled,
+		Value:       Kubernetes.EgressIPEnabled,
 	},
 	&cli.StringFlag{
 		Name:        "no-hostsubnet-nodes",

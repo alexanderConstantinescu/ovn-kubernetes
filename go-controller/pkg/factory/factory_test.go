@@ -17,6 +17,7 @@ import (
 	core "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 
+	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
 	egressip "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1"
 	egressipfake "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1/apis/clientset/versioned/fake"
 
@@ -164,6 +165,10 @@ var _ = Describe("Watch Factory Operations", func() {
 	)
 
 	BeforeEach(func() {
+
+		// Restore global default values before each testcase
+		config.PrepareTestConfig()
+
 		fakeClient = &fake.Clientset{}
 		egressIPFakeClient = &egressipfake.Clientset{}
 
@@ -349,6 +354,33 @@ var _ = Describe("Watch Factory Operations", func() {
 			testExisting(serviceType)
 		})
 		It("calls ADD for each existing egressIP", func() {
+			egressIPs = append(egressIPs, newEgressIP("myEgressIP", "default"))
+			egressIPs = append(egressIPs, newEgressIP("myEgressIP1", "default"))
+			testExisting(egressIPType)
+		})
+	})
+
+	Context("when EgressIP is disabled", func() {
+		testExisting := func(objType reflect.Type) {
+			wf, err = NewWatchFactory(fakeClient, egressIPFakeClient)
+			Expect(err).NotTo(HaveOccurred())
+			var addCalls int32
+			h, err := wf.addHandler(objType, "", nil,
+				cache.ResourceEventHandlerFuncs{
+					AddFunc: func(obj interface{}) {
+						atomic.AddInt32(&addCalls, 1)
+					},
+					UpdateFunc: func(old, new interface{}) {},
+					DeleteFunc: func(obj interface{}) {},
+				}, func(existing []interface{}) {
+					atomic.AddInt32(&addCalls, int32(len(existing)))
+				})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(int(addCalls)).To(Equal(0))
+			wf.removeHandler(objType, h)
+		}
+		It("does not call ADD for each existing egressIP", func() {
+			config.Kubernetes.EgressIPEnabled = false
 			egressIPs = append(egressIPs, newEgressIP("myEgressIP", "default"))
 			egressIPs = append(egressIPs, newEgressIP("myEgressIP1", "default"))
 			testExisting(egressIPType)

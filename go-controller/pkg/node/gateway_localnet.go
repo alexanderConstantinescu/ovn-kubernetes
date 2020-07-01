@@ -179,8 +179,10 @@ func (n *OvnNode) initLocalEgressIP(gatewayIfAddrs []*net.IPNet) error {
 		gatewayIPv4: gatewayIPv4,
 		gatewayIPv6: gatewayIPv6,
 	}
-	if err := n.WatchEgressIP(); err != nil {
-		return err
+	if config.Kubernetes.EgressIPEnabled {
+		if err := n.WatchEgressIP(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

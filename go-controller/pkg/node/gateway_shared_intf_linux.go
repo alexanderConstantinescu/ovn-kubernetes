@@ -17,7 +17,10 @@ import (
 
 func (n *OvnNode) initSharedEgressIP() error {
 	n.modeEgressIP = &egressIPShared{}
-	return n.WatchEgressIP()
+	if config.Kubernetes.EgressIPEnabled {
+		return n.WatchEgressIP()
+	}
+	return nil
 }
 
 // Creates br-local OVS bridge on the node and adds ovn-k8s-gw0 port to it with the
