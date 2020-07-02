@@ -11,6 +11,7 @@ import (
 	"github.com/urfave/cli/v2"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/record"
 
 	egressipfake "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1/apis/clientset/versioned/fake"
 )
@@ -30,6 +31,7 @@ type FakeOVN struct {
 	controller       *Controller
 	stopChan         chan struct{}
 	fakeExec         *ovntest.FakeExec
+	fakeRecorder     record.EventRecorder
 	asf              *fakeAddressSetFactory
 	ovnNBClient      goovn.Client
 	ovnSBClient      goovn.Client
@@ -39,8 +41,9 @@ func NewFakeOVN(fexec *ovntest.FakeExec) *FakeOVN {
 	err := util.SetExec(fexec)
 	Expect(err).NotTo(HaveOccurred())
 	return &FakeOVN{
-		fakeExec: fexec,
-		asf:      newFakeAddressSetFactory(),
+		fakeExec:     fexec,
+		asf:          newFakeAddressSetFactory(),
+		fakeRecorder: record.NewFakeRecorder(10),
 	}
 }
 
@@ -77,7 +80,7 @@ func (o *FakeOVN) init() {
 	o.ovnSBClient = ovntest.NewMockOVNClient(goovn.DBSB)
 	o.controller = NewOvnController(o.fakeClient, o.fakeEgressClient, o.watcher,
 		o.stopChan, o.asf, o.ovnNBClient,
-		o.ovnSBClient)
+		o.ovnSBClient, o.fakeRecorder)
 	o.controller.multicastSupport = true
 
 }

@@ -11,6 +11,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/record"
 
 	egressipfake "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1/apis/clientset/versioned/fake"
 
@@ -311,7 +312,7 @@ var _ = Describe("Master Operations", func() {
 			clusterController := NewOvnController(fakeClient, egressIPFakeClient, f, stopChan,
 				newFakeAddressSetFactory(),
 				mockOVNNBClient,
-				mockOVNSBClient)
+				mockOVNSBClient, record.NewFakeRecorder(0))
 
 			Expect(clusterController).NotTo(BeNil())
 			clusterController.TCPLoadBalancerUUID = tcpLBUUID
@@ -401,7 +402,7 @@ var _ = Describe("Master Operations", func() {
 
 			clusterController := NewOvnController(fakeClient, egressIPFakeClient, f, stopChan,
 				newFakeAddressSetFactory(), mockOVNNBClient,
-				mockOVNSBClient)
+				mockOVNSBClient, record.NewFakeRecorder(0))
 
 			Expect(clusterController).NotTo(BeNil())
 			clusterController.TCPLoadBalancerUUID = tcpLBUUID
@@ -489,7 +490,7 @@ var _ = Describe("Master Operations", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			clusterController := NewOvnController(fakeClient, egressIPFakeClient, f, stopChan,
-				newFakeAddressSetFactory(), mockOVNNBClient, mockOVNSBClient)
+				newFakeAddressSetFactory(), mockOVNNBClient, mockOVNSBClient, record.NewFakeRecorder(0))
 			Expect(clusterController).NotTo(BeNil())
 			clusterController.TCPLoadBalancerUUID = tcpLBUUID
 			clusterController.UDPLoadBalancerUUID = udpLBUUID
@@ -636,7 +637,7 @@ subnet=%s
 
 			clusterController := NewOvnController(fakeClient, egressIPFakeClient, f, stopChan,
 				newFakeAddressSetFactory(), ovntest.NewMockOVNClient(goovn.DBNB),
-				ovntest.NewMockOVNClient(goovn.DBSB))
+				ovntest.NewMockOVNClient(goovn.DBSB), record.NewFakeRecorder(0))
 			Expect(clusterController).NotTo(BeNil())
 			clusterController.TCPLoadBalancerUUID = tcpLBUUID
 			clusterController.UDPLoadBalancerUUID = udpLBUUID
@@ -859,7 +860,7 @@ var _ = Describe("Gateway Init Operations", func() {
 
 			clusterController := NewOvnController(fakeClient, egressIPFakeClient, f, stopChan, newFakeAddressSetFactory(),
 				ovntest.NewMockOVNClient(goovn.DBNB),
-				ovntest.NewMockOVNClient(goovn.DBSB))
+				ovntest.NewMockOVNClient(goovn.DBSB), record.NewFakeRecorder(0))
 			Expect(clusterController).NotTo(BeNil())
 			clusterController.TCPLoadBalancerUUID = tcpLBUUID
 			clusterController.UDPLoadBalancerUUID = udpLBUUID
@@ -1054,7 +1055,7 @@ var _ = Describe("Gateway Init Operations", func() {
 
 			clusterController := NewOvnController(fakeClient, egressIPFakeClient, f, stopChan,
 				newFakeAddressSetFactory(), ovntest.NewMockOVNClient(goovn.DBNB),
-				ovntest.NewMockOVNClient(goovn.DBSB))
+				ovntest.NewMockOVNClient(goovn.DBSB), record.NewFakeRecorder(0))
 			Expect(clusterController).NotTo(BeNil())
 			clusterController.TCPLoadBalancerUUID = tcpLBUUID
 			clusterController.UDPLoadBalancerUUID = udpLBUUID
