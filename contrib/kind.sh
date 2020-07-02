@@ -247,10 +247,12 @@ docker build -t ovn-daemonset-f:dev -f Dockerfile.fedora .
   --k8s-apiserver=https://[${API_IP}]:11337 \
   --ovn-master-count=${KIND_NUM_MASTER} \
   --kind \
-  --master-loglevel=5
+  --master-loglevel=5 \
+  --egress-ip-enable=true
 popd
 kind load docker-image ovn-daemonset-f:dev --name ${KIND_CLUSTER_NAME}
 pushd ../dist/yaml
+run_kubectl apply -f k8s.ovn.org_egressips.yaml 
 run_kubectl apply -f ovn-setup.yaml
 CONTROL_NODES=$(docker ps -f name=ovn-control | grep -v NAMES | awk '{ print $NF }')
 for n in $CONTROL_NODES; do

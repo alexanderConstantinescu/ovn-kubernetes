@@ -69,6 +69,11 @@ rules:
   - nodes
   - pods
   verbs: ["patch", "update"]
+- apiGroups:
+  - k8s.ovn.org
+  resources:
+  - egressips
+  verbs: ["create", "list", "get", "watch", "patch", "update"]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
