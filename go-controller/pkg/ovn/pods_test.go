@@ -199,7 +199,7 @@ var _ = Describe("OVN Pod Operations", func() {
 					Output: "\n",
 				})
 
-				fakeOvn.start(ctx, &v1.PodList{
+				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{
 						*newPod(t.namespace, t.podName, t.nodeName, t.podIP),
 					},
@@ -248,7 +248,7 @@ var _ = Describe("OVN Pod Operations", func() {
 
 				t.baseCmds(fExec)
 
-				fakeOvn.start(ctx, &v1.PodList{
+				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{},
 				})
 				t.populateLogicalSwitchCache(fakeOvn)
@@ -294,7 +294,7 @@ var _ = Describe("OVN Pod Operations", func() {
 				})
 				t.addPodDenyMcast(fExec)
 
-				fakeOvn.start(ctx, &v1.PodList{
+				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{
 						*newPod(t.namespace, t.podName, t.nodeName, t.podIP),
 					},
@@ -343,7 +343,7 @@ var _ = Describe("OVN Pod Operations", func() {
 					Output: "\n",
 				})
 
-				fakeOvn.start(ctx, &v1.PodList{
+				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{
 						*newPod(t.namespace, t.podName, t.nodeName, t.podIP),
 					},
@@ -399,7 +399,7 @@ var _ = Describe("OVN Pod Operations", func() {
 				})
 				t.addPodDenyMcast(fExec)
 
-				fakeOvn.start(ctx, &v1.PodList{
+				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{
 						*newPod(t.namespace, t.podName, t.nodeName, t.podIP),
 					},
@@ -445,7 +445,7 @@ var _ = Describe("OVN Pod Operations", func() {
 					"ovn-nbctl --timeout=15 --if-exists lsp-del " + t.portName,
 				})
 
-				fakeOvn.start(ctx)
+				fakeOvn.start(ctx, nil)
 				fakeOvn.controller.WatchPods()
 				Expect(fExec.CalledMatchesExpected()).To(BeTrue(), fExec.ErrorDesc)
 				return nil
@@ -475,7 +475,7 @@ var _ = Describe("OVN Pod Operations", func() {
 				})
 				t.addPodDenyMcast(fExec)
 
-				fakeOvn.start(ctx, &v1.PodList{
+				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{
 						*newPod(t.namespace, t.podName, t.nodeName, t.podIP),
 					},
@@ -515,7 +515,7 @@ var _ = Describe("OVN Pod Operations", func() {
 				})
 				t.addPodDenyMcast(fExec)
 
-				fakeOvn.start(ctx, &v1.PodList{
+				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{
 						*newPod(t.namespace, t.podName, t.nodeName, t.podIP),
 					},
@@ -568,7 +568,7 @@ var _ = Describe("OVN Pod Operations", func() {
 				})
 				t.addPodDenyMcast(fExec)
 
-				fakeOvn.start(ctx, &v1.PodList{
+				fakeOvn.start(ctx, nil, &v1.PodList{
 					Items: []v1.Pod{
 						*newPod(t.namespace, t.podName, t.nodeName, t.podIP),
 					},
@@ -619,7 +619,7 @@ var _ = Describe("OVN Pod Operations", func() {
 					namespaceT.Name,
 				)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
 						Items: []v1.Namespace{
 							namespaceT,

@@ -78,7 +78,7 @@ var _ = Describe("OVN Namespace Operations", func() {
 					namespaceT.Name,
 				)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
 						Items: []v1.Namespace{
 							namespaceT,
@@ -110,7 +110,7 @@ var _ = Describe("OVN Namespace Operations", func() {
 
 		It("creates an empty address set for the namespace without pods", func() {
 			app.Action = func(ctx *cli.Context) error {
-				fakeOvn.start(ctx, &v1.NamespaceList{
+				fakeOvn.start(ctx, nil, &v1.NamespaceList{
 					Items: []v1.Namespace{
 						*newNamespace("namespace1"),
 					},
@@ -134,7 +134,7 @@ var _ = Describe("OVN Namespace Operations", func() {
 	Context("during execution", func() {
 		It("deletes an empty namespace's resources", func() {
 			app.Action = func(ctx *cli.Context) error {
-				fakeOvn.start(ctx, &v1.NamespaceList{
+				fakeOvn.start(ctx, nil, &v1.NamespaceList{
 					Items: []v1.Namespace{
 						*newNamespace(namespaceName),
 					},

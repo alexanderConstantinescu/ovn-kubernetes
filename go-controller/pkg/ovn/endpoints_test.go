@@ -190,7 +190,7 @@ var _ = Describe("OVN Namespace Operations", func() {
 
 				testE.addCmds(tExec, serviceT, endpointsT)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.EndpointsList{
 						Items: []v1.Endpoints{
 							endpointsT,
@@ -252,7 +252,7 @@ var _ = Describe("OVN Namespace Operations", func() {
 				testE.addCmds(tExec, serviceT, endpointsT)
 				testE.addExternalIPCmds(tExec, loadBalancerIPs, serviceT, endpointsT)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.EndpointsList{
 						Items: []v1.Endpoints{
 							endpointsT,
@@ -312,7 +312,7 @@ var _ = Describe("OVN Namespace Operations", func() {
 				testE.addNodePortPortCmds(tExec, serviceT, endpointsT)
 				testE.addCmds(tExec, serviceT, endpointsT)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.EndpointsList{
 						Items: []v1.Endpoints{
 							endpointsT,
@@ -369,7 +369,7 @@ var _ = Describe("OVN Namespace Operations", func() {
 				)
 				testE.addCmds(tExec, serviceT, endpointsT)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.EndpointsList{
 						Items: []v1.Endpoints{
 							endpointsT,
@@ -434,7 +434,7 @@ var _ = Describe("OVN Namespace Operations", func() {
 				testE.addNodePortPortCmds(tExec, serviceT, endpointsT)
 				testE.addCmds(tExec, serviceT, endpointsT)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.EndpointsList{
 						Items: []v1.Endpoints{
 							endpointsT,

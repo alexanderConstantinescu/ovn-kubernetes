@@ -172,7 +172,7 @@ var _ = Describe("OVN Namespace Operations", func() {
 
 				test.baseCmds(fExec, service)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.ServiceList{
 						Items: []v1.Service{
 							service,
@@ -210,7 +210,7 @@ var _ = Describe("OVN Namespace Operations", func() {
 
 				test.baseCmds(fExec, service)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.ServiceList{
 						Items: []v1.Service{
 							service,

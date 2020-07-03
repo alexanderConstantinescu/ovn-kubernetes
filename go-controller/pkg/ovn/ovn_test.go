@@ -24,14 +24,15 @@ const (
 )
 
 type FakeOVN struct {
-	fakeClient  *fake.Clientset
-	watcher     *factory.WatchFactory
-	controller  *Controller
-	stopChan    chan struct{}
-	fakeExec    *ovntest.FakeExec
-	asf         *fakeAddressSetFactory
-	ovnNBClient goovn.Client
-	ovnSBClient goovn.Client
+	fakeClient       *fake.Clientset
+	fakeEgressClient *egressipfake.Clientset
+	watcher          *factory.WatchFactory
+	controller       *Controller
+	stopChan         chan struct{}
+	fakeExec         *ovntest.FakeExec
+	asf              *fakeAddressSetFactory
+	ovnNBClient      goovn.Client
+	ovnSBClient      goovn.Client
 }
 
 func NewFakeOVN(fexec *ovntest.FakeExec) *FakeOVN {
@@ -43,11 +44,12 @@ func NewFakeOVN(fexec *ovntest.FakeExec) *FakeOVN {
 	}
 }
 
-func (o *FakeOVN) start(ctx *cli.Context, objects ...runtime.Object) {
+func (o *FakeOVN) start(ctx *cli.Context, egressObjects []runtime.Object, objects ...runtime.Object) {
 	_, err := config.InitConfig(ctx, o.fakeExec, nil)
 	Expect(err).NotTo(HaveOccurred())
 
 	o.fakeClient = fake.NewSimpleClientset(objects...)
+	o.fakeEgressClient = egressipfake.NewSimpleClientset(egressObjects...)
 	o.init()
 }
 
@@ -69,12 +71,11 @@ func (o *FakeOVN) init() {
 	var err error
 
 	o.stopChan = make(chan struct{})
-	egressIPFakeClient := &egressipfake.Clientset{}
-	o.watcher, err = factory.NewWatchFactory(o.fakeClient, egressIPFakeClient)
+	o.watcher, err = factory.NewWatchFactory(o.fakeClient, o.fakeEgressClient)
 	Expect(err).NotTo(HaveOccurred())
 	o.ovnNBClient = ovntest.NewMockOVNClient(goovn.DBNB)
 	o.ovnSBClient = ovntest.NewMockOVNClient(goovn.DBSB)
-	o.controller = NewOvnController(o.fakeClient, egressIPFakeClient, o.watcher,
+	o.controller = NewOvnController(o.fakeClient, o.fakeEgressClient, o.watcher,
 		o.stopChan, o.asf, o.ovnNBClient,
 		o.ovnSBClient)
 	o.controller.multicastSupport = true

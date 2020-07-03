@@ -358,7 +358,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 
 				npTest.addNamespaceSelectorCmds(fExec, networkPolicy, true)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
 						Items: []v1.Namespace{
 							namespace1,
@@ -444,7 +444,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 				npTest.addNamespaceSelectorCmds(fExec, networkPolicy, false)
 				npTest.addLocalPodCmds(fExec, networkPolicy)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
 						Items: []v1.Namespace{
 							namespace1,
@@ -542,7 +542,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 				nPodTest.addPodDenyMcast(fExec)
 				npTest.addNamespaceSelectorCmds(fExec, networkPolicy, false)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
 						Items: []v1.Namespace{
 							namespace1,
@@ -644,7 +644,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 					fmt.Sprintf("ovn-nbctl --timeout=15 --id=@acl create acl priority=1001 direction=to-lport match=\"ip4 && tcp && tcp.dst==%d && inport == @a14195333570786048679\" action=allow external-ids:l4Match=\"tcp && tcp.dst==%d\" external-ids:ipblock_cidr=false external-ids:namespace=%s external-ids:policy=%s external-ids:Egress_num=0 external-ids:policy_type=Egress -- add port_group %s acls @acl", portNum, portNum, networkPolicy.Namespace, networkPolicy.Name, readableGroupName),
 				})
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
 						Items: []v1.Namespace{namespace1},
 					},
@@ -726,7 +726,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 				npTest.addNamespaceSelectorCmds(fExec, networkPolicy, true)
 				npTest.addLocalPodCmds(fExec, networkPolicy)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
 						Items: []v1.Namespace{
 							namespace1,
@@ -817,7 +817,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 
 				npTest.addNamespaceSelectorCmds(fExec, networkPolicy, true)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
 						Items: []v1.Namespace{
 							namespace1,
@@ -912,7 +912,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 				npTest.addNamespaceSelectorCmds(fExec, networkPolicy, false)
 				npTest.addLocalPodCmds(fExec, networkPolicy)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
 						Items: []v1.Namespace{
 							namespace1,
@@ -1019,7 +1019,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 				nPodTest.addPodDenyMcast(fExec)
 				npTest.addNamespaceSelectorCmds(fExec, networkPolicy, false)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
 						Items: []v1.Namespace{
 							namespace1,
@@ -1120,7 +1120,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 				npTest.addNamespaceSelectorCmds(fExec, networkPolicy, false)
 				npTest.addLocalPodCmds(fExec, networkPolicy)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
 						Items: []v1.Namespace{
 							namespace1,
@@ -1166,7 +1166,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 			app.Action = func(ctx *cli.Context) error {
 				namespace1 := *newNamespace(namespaceName1)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
 						Items: []v1.Namespace{
 							namespace1,
@@ -1222,7 +1222,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 
 				nPodTest.baseCmds(fExec)
 				nPodTest.addPodDenyMcast(fExec)
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
 						Items: []v1.Namespace{
 							namespace1,
@@ -1275,7 +1275,7 @@ var _ = Describe("OVN NetworkPolicy Operations", func() {
 					namespace1.Name,
 				)
 
-				fakeOvn.start(ctx,
+				fakeOvn.start(ctx, nil,
 					&v1.NamespaceList{
 						Items: []v1.Namespace{
 							namespace1,
