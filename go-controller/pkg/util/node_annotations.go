@@ -237,9 +237,15 @@ func ParseNodeManagementPortMACAddress(node *kapi.Node) (net.HardwareAddr, error
 	return net.ParseMAC(macAddress)
 }
 
-func SetNodePrimaryIP(nodeAnnotator kube.Annotator, protocol iptables.Protocol, nodeIP string) error {
-	ipFamily := getFamilyFromProtocol(protocol)
-	return nodeAnnotator.Set(fmt.Sprintf("%s-%s", ovnNodeCIDR, ipFamily), nodeIP)
+func SetNodePrimaryIP(nodeAnnotator kube.Annotator, nodeIPNetv4, nodeIPNetv6 *net.IPNet) error {
+	var err error
+	if nodeIPNetv4 != nil {
+		err = nodeAnnotator.Set(fmt.Sprintf("%s-%s", ovnNodeCIDR, "ipv4"), nodeIPNetv4.String())
+	}
+	if nodeIPNetv6 != nil {
+		err = nodeAnnotator.Set(fmt.Sprintf("%s-%s", ovnNodeCIDR, "ipv6"), nodeIPNetv6.String())
+	}
+	return err
 }
 
 func ParseNodePrimaryIP(node *kapi.Node) (string, string, bool) {

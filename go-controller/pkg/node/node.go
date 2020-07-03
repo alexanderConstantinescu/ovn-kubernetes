@@ -27,11 +27,12 @@ import (
 
 // OvnNode is the object holder for utilities meant for node management
 type OvnNode struct {
-	name         string
-	Kube         kube.Interface
-	watchFactory *factory.WatchFactory
-	stopChan     chan struct{}
-	recorder     record.EventRecorder
+	name               string
+	Kube               kube.Interface
+	watchFactory       *factory.WatchFactory
+	stopChan           chan struct{}
+	recorder           record.EventRecorder
+	defaultGatewayIntf string
 }
 
 // NewNode creates a new controller for node management

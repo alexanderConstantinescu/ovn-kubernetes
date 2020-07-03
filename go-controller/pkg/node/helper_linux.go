@@ -8,9 +8,9 @@ import (
 	"syscall"
 
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/util"
-	kapi "k8s.io/api/core/v1"
-
 	"github.com/vishvananda/netlink"
+	kapi "k8s.io/api/core/v1"
+	utilnet "k8s.io/utils/net"
 )
 
 // getDefaultGatewayInterfaceDetails returns the interface name on
@@ -36,6 +36,27 @@ func getDefaultGatewayInterfaceDetails() (string, net.IP, error) {
 		}
 	}
 	return "", nil, fmt.Errorf("failed to get default gateway interface")
+}
+
+func getDefaultIPNet(defaultGatewayIntf string) (*net.IPNet, *net.IPNet, error) {
+	var ipNetV4, ipNetV6 *net.IPNet
+	primaryLink, err := netlink.LinkByName(defaultGatewayIntf)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error: unable to get link for default interface: %s, err: %v", defaultGatewayIntf, err)
+	}
+	addrs, err := netlink.AddrList(primaryLink, netlink.FAMILY_ALL)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error: unable to list addresses for default interface, err: %v", err)
+	}
+	for _, addr := range addrs {
+		if utilnet.IsIPv6(addr.IP) {
+			ipNetV6 = addr.IPNet
+		}
+		if !utilnet.IsIPv6(addr.IP) {
+			ipNetV4 = addr.IPNet
+		}
+	}
+	return ipNetV4, ipNetV6, nil
 }
 
 func getIntfName(gatewayIntf string) (string, error) {

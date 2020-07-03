@@ -6,12 +6,11 @@ import (
 	"runtime"
 	"strings"
 
-	"k8s.io/klog"
-	utilnet "k8s.io/utils/net"
-
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/kube"
-	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/util"
+	util "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/util"
+	"k8s.io/klog"
+	utilnet "k8s.io/utils/net"
 )
 
 // bridgedGatewayNodeSetup makes the bridge's MAC address permanent (if needed), sets up
@@ -107,7 +106,20 @@ func (n *OvnNode) initGateway(subnets []*net.IPNet, nodeAnnotator kube.Annotator
 		}
 	}
 
-	var err error
+	defaultGatewayIntf, defaultGatewayNextHop, err := getDefaultGatewayInterfaceDetails()
+	if err != nil {
+		return err
+	}
+
+	n.defaultGatewayIntf = defaultGatewayIntf
+
+	ipNetV4, ipNetV6, err := getDefaultIPNet(defaultGatewayIntf)
+	if err == nil {
+		if err := util.SetNodePrimaryIP(nodeAnnotator, ipNetV4, ipNetV6); err != nil {
+			klog.Errorf("Unable to set primary IP net label on node, err: %v", err)
+		}
+	}
+
 	var prFn postWaitFunc
 	switch config.Gateway.Mode {
 	case config.GatewayModeLocal:
@@ -116,16 +128,9 @@ func (n *OvnNode) initGateway(subnets []*net.IPNet, nodeAnnotator kube.Annotator
 		gatewayNextHop := net.ParseIP(config.Gateway.NextHop)
 		gatewayIntf := config.Gateway.Interface
 		if gatewayNextHop == nil || gatewayIntf == "" {
-			// We need to get the interface details from the default gateway.
-			defaultGatewayIntf, defaultGatewayNextHop, err := getDefaultGatewayInterfaceDetails()
-			if err != nil {
-				return err
-			}
-
 			if gatewayNextHop == nil {
 				gatewayNextHop = defaultGatewayNextHop
 			}
-
 			if gatewayIntf == "" {
 				gatewayIntf = defaultGatewayIntf
 			}
