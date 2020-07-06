@@ -253,3 +253,7 @@ func ParseNodePrimaryIP(node *kapi.Node) (string, string, bool) {
 	nodeIPNetV6, v6Exists := node.Annotations[fmt.Sprintf("%s-%s", ovnNodeCIDR, "ipv6")]
 	return nodeIPNetV4, nodeIPNetV6, v4Exists || v6Exists
 }
+
+func GetNodeEgressLabel() string {
+	return fmt.Sprintf("%s=", ovnNodeEgressLabel)
+}

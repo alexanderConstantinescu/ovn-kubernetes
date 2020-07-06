@@ -12,6 +12,7 @@ import (
 
 	goovn "github.com/ebay/go-ovn"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
+	egressipv1 "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1"
 	egressipapi "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1/apis/clientset/versioned"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/factory"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/kube"
@@ -73,6 +74,15 @@ type namespaceInfo struct {
 	multicastEnabled bool
 }
 
+// eNode is a cache helper used for egress IP assignment
+type eNode struct {
+	v4Subnet    *net.IPNet
+	v6Subnet    *net.IPNet
+	allocations map[string]bool
+	tainted     bool
+	name        string
+}
+
 // Controller structure is the object which holds the controls for starting
 // and reacting upon the watched resources (e.g. pods, endpoints)
 type Controller struct {
@@ -129,6 +139,31 @@ type Controller struct {
 	// Supports multicast?
 	multicastSupport bool
 
+	// Interface used for programming OVN for egress IP, based on the mode it's running in.
+	modeEgressIP modeEgressIP
+
+	// Sync used for retrying EgressIP objects which were created before any node existed.
+	egressAssignmentRetry sync.Map
+
+	// Mutex used for syncing the egressIP namespace handlers
+	egressIPNamespaceHandlerMutex *sync.Mutex
+
+	// Cache used for keeping track of EgressIP namespace handlers
+	egressIPNamespaceHandlerCache map[string]factory.Handler
+
+	// Mutex used for syncing the egressIP pod handlers
+	egressIPPodHandlerMutex *sync.Mutex
+
+	// Cache used for keeping track of EgressIP pod handlers
+	egressIPPodHandlerCache map[string]factory.Handler
+
+	// A cache used for egress IP assignments containing data for all cluster nodes
+	// which can be used for egress IP assignments
+	eIPAllocator map[string]*eNode
+
+	// A mutex for eIPAllocator
+	eIPAllocatorMutex *sync.Mutex
+
 	// Map of load balancers to service namespace
 	serviceVIPToName map[ServiceVIPKey]types.NamespacedName
 
@@ -168,34 +203,41 @@ func NewOvnController(kubeClient kubernetes.Interface, egressIPClient egressipap
 	if addressSetFactory == nil {
 		addressSetFactory = NewOvnAddressSetFactory()
 	}
-
+	modeEgressIP := newModeEgressIP(ovnNBClient)
 	return &Controller{
 		kube: &kube.Kube{
 			KClient:   kubeClient,
 			EIPClient: egressIPClient,
 		},
-		watchFactory:             wf,
-		stopChan:                 stopChan,
-		masterSubnetAllocator:    subnetallocator.NewSubnetAllocator(),
-		nodeLocalNatIPAllocator:  &ipallocator.Range{},
-		lsManager:                newLogicalSwitchManager(),
-		joinSubnetAllocator:      subnetallocator.NewSubnetAllocator(),
-		logicalPortCache:         newPortCache(stopChan),
-		namespaces:               make(map[string]*namespaceInfo),
-		namespacesMutex:          sync.Mutex{},
-		addressSetFactory:        addressSetFactory,
-		lspIngressDenyCache:      make(map[string]int),
-		lspEgressDenyCache:       make(map[string]int),
-		lspMutex:                 &sync.Mutex{},
-		loadbalancerClusterCache: make(map[kapi.Protocol]string),
-		multicastSupport:         config.EnableMulticast,
-		serviceVIPToName:         make(map[ServiceVIPKey]types.NamespacedName),
-		serviceVIPToNameLock:     sync.Mutex{},
-		serviceLBMap:             make(map[string]map[string]*loadBalancerConf),
-		serviceLBLock:            sync.Mutex{},
-		recorder:                 util.EventRecorder(kubeClient),
-		ovnNBClient:              ovnNBClient,
-		ovnSBClient:              ovnSBClient,
+		watchFactory:                  wf,
+		stopChan:                      stopChan,
+		masterSubnetAllocator:         subnetallocator.NewSubnetAllocator(),
+		nodeLocalNatIPAllocator:       &ipallocator.Range{},
+		lsManager:                     newLogicalSwitchManager(),
+		joinSubnetAllocator:           subnetallocator.NewSubnetAllocator(),
+		logicalPortCache:              newPortCache(stopChan),
+		namespaces:                    make(map[string]*namespaceInfo),
+		namespacesMutex:               sync.Mutex{},
+		addressSetFactory:             addressSetFactory,
+		lspIngressDenyCache:           make(map[string]int),
+		lspEgressDenyCache:            make(map[string]int),
+		lspMutex:                      &sync.Mutex{},
+		modeEgressIP:                  modeEgressIP,
+		egressIPNamespaceHandlerMutex: &sync.Mutex{},
+		egressIPNamespaceHandlerCache: make(map[string]factory.Handler),
+		egressIPPodHandlerMutex:       &sync.Mutex{},
+		egressIPPodHandlerCache:       make(map[string]factory.Handler),
+		eIPAllocatorMutex:             &sync.Mutex{},
+		eIPAllocator:                  make(map[string]*eNode),
+		loadbalancerClusterCache:      make(map[kapi.Protocol]string),
+		multicastSupport:              config.EnableMulticast,
+		serviceVIPToName:              make(map[ServiceVIPKey]types.NamespacedName),
+		serviceVIPToNameLock:          sync.Mutex{},
+		serviceLBMap:                  make(map[string]map[string]*loadBalancerConf),
+		serviceLBLock:                 sync.Mutex{},
+		recorder:                      util.EventRecorder(kubeClient),
+		ovnNBClient:                   ovnNBClient,
+		ovnSBClient:                   ovnSBClient,
 	}
 }
 
@@ -212,7 +254,7 @@ func (oc *Controller) Run() error {
 	}
 
 	for _, f := range []func() error{oc.WatchNamespaces, oc.WatchPods, oc.WatchServices,
-		oc.WatchEndpoints, oc.WatchNetworkPolicy} {
+		oc.WatchEndpoints, oc.WatchNetworkPolicy, oc.WatchEgressNodes, oc.WatchEgressIP} {
 		if err := f(); err != nil {
 			return err
 		}
@@ -235,6 +277,21 @@ type emptyLBBackendEvent struct {
 	vip      string
 	protocol kapi.Protocol
 	uuid     string
+}
+
+func newModeEgressIP(ovnNBClient goovn.Client) modeEgressIP {
+	if config.Gateway.Mode == config.GatewayModeLocal {
+		return &egressIPLocal{
+			egressIPMode: egressIPMode{
+				ovnNBClient: ovnNBClient,
+			},
+		}
+	}
+	return &egressIPShared{
+		egressIPMode: egressIPMode{
+			ovnNBClient: ovnNBClient,
+		},
+	}
 }
 
 func extractEmptyLBBackendsEvents(out []byte) ([]emptyLBBackendEvent, error) {
@@ -415,7 +472,6 @@ func (oc *Controller) WatchPods() error {
 			if !podWantsNetwork(pod) {
 				return
 			}
-
 			if podScheduled(pod) {
 				if err := oc.addLogicalPort(pod); err != nil {
 					klog.Errorf(err.Error())
@@ -556,6 +612,64 @@ func (oc *Controller) WatchNetworkPolicy() error {
 		klog.Infof("Bootstrapping existing policies and cleaning stale policies took %v",
 			time.Since(start))
 	}
+	return err
+}
+
+// WatchEgressNodes starts the watching of egress assignable nodes and calls
+// back the appropriate handler logic.
+func (oc *Controller) WatchEgressNodes() error {
+	nodeEgressLabel, err := labels.ConvertSelectorToLabelsMap(util.GetNodeEgressLabel())
+	if err != nil {
+		return fmt.Errorf("unable to convert node egress label: %s to selector, err: %v", util.GetNodeEgressLabel(), err)
+	}
+	_, err = oc.watchFactory.AddFilteredNodeHandler(metav1.SetAsLabelSelector(nodeEgressLabel), cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			egressNode := obj.(*kapi.Node)
+			if err := oc.addEgressNode(egressNode); err != nil {
+				klog.Error(err)
+			}
+		},
+		UpdateFunc: func(old, new interface{}) {},
+		DeleteFunc: func(obj interface{}) {
+			egressNode := obj.(*kapi.Node)
+			if err := oc.deleteEgressNode(egressNode); err != nil {
+				klog.Error(err)
+			}
+		},
+	}, oc.syncEgressNodes)
+	return err
+}
+
+// WatchEgressIP starts the watching of egressip resource and calls
+// back the appropriate handler logic.
+func (oc *Controller) WatchEgressIP() error {
+	_, err := oc.watchFactory.AddEgressIPHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			eIP := obj.(*egressipv1.EgressIP)
+			if err := oc.addEgressIP(eIP); err != nil {
+				klog.Error(err)
+			}
+		},
+		UpdateFunc: func(old, new interface{}) {
+			oldEIP := old.(*egressipv1.EgressIP)
+			newEIP := new.(*egressipv1.EgressIP)
+			if !reflect.DeepEqual(oldEIP.Spec, newEIP.Spec) {
+				if err := oc.deleteEgressIP(oldEIP); err != nil {
+					klog.Error(err)
+				}
+				newEIP.Status = []egressipv1.EgressIPStatus{}
+				if err := oc.addEgressIP(newEIP); err != nil {
+					klog.Error(err)
+				}
+			}
+		},
+		DeleteFunc: func(obj interface{}) {
+			eIP := obj.(*egressipv1.EgressIP)
+			if err := oc.deleteEgressIP(eIP); err != nil {
+				klog.Error(err)
+			}
+		},
+	}, oc.syncEgressIPs)
 	return err
 }
 
