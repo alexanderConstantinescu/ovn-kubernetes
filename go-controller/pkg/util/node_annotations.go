@@ -52,6 +52,12 @@ const (
 
 	// ovnNodeChassisID is the systemID of the node needed for creating L3 gateway
 	ovnNodeChassisID = "k8s.ovn.org/node-chassis-id"
+
+	// ovnNodeCIDR is the CIDR form representation of primary network interface's attached IP address (i.e: 192.168.126.31/24 or 0:0:0:0:0:feff:c0a8:8e0c/64)
+	ovnNodeCIDR = "k8s.ovn.org/node-primary-cidr"
+
+	// OvnNodeEgressLabel is a user assigned node label indicating to ovn-kubernetes that the node is to be used for egress IP assignment
+	ovnNodeEgressLabel = "k8s.ovn.org/egress-assignable"
 )
 
 type L3GatewayConfig struct {
@@ -229,4 +235,15 @@ func ParseNodeManagementPortMACAddress(node *kapi.Node) (net.HardwareAddr, error
 	}
 
 	return net.ParseMAC(macAddress)
+}
+
+func SetNodePrimaryIP(nodeAnnotator kube.Annotator, protocol iptables.Protocol, nodeIP string) error {
+	ipFamily := getFamilyFromProtocol(protocol)
+	return nodeAnnotator.Set(fmt.Sprintf("%s-%s", ovnNodeCIDR, ipFamily), nodeIP)
+}
+
+func ParseNodePrimaryIP(node *kapi.Node) (string, string, bool) {
+	nodeIPNetV4, v4Exists := node.Annotations[fmt.Sprintf("%s-%s", ovnNodeCIDR, "ipv4")]
+	nodeIPNetV6, v6Exists := node.Annotations[fmt.Sprintf("%s-%s", ovnNodeCIDR, "ipv6")]
+	return nodeIPNetV4, nodeIPNetV6, v4Exists || v6Exists
 }
