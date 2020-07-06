@@ -33,6 +33,7 @@ type OvnNode struct {
 	stopChan           chan struct{}
 	recorder           record.EventRecorder
 	defaultGatewayIntf string
+	modeEgressIP       modeEgressIP
 }
 
 // NewNode creates a new controller for node management

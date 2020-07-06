@@ -6,6 +6,10 @@ import (
 	kapi "k8s.io/api/core/v1"
 )
 
+func (n *OvnNode) initSharedEgressIP() error {
+	return nil
+}
+
 func initSharedGatewayIPTables() error {
 	return nil
 }

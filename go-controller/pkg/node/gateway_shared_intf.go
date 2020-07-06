@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
+	egressipv1 "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/factory"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/kube"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/util"
@@ -22,6 +23,17 @@ const (
 	// The hex number 0xdeff105, aka defflos, is meant to sound like default flows.
 	defaultOpenFlowCookie = "0xdeff105"
 )
+
+type egressIPShared struct {
+}
+
+func (e *egressIPShared) setupEgressIP(eIPStatus egressipv1.EgressIPStatus) error {
+	return nil
+}
+
+func (e *egressIPShared) cleanupEgressIP(eIPStatus egressipv1.EgressIPStatus) error {
+	return nil
+}
 
 func addService(service *kapi.Service, inport, outport, gwBridge string, nodeIP *net.IPNet) {
 	if !util.ServiceTypeHasNodePort(service) && len(service.Spec.ExternalIPs) == 0 {
@@ -406,6 +418,10 @@ func (n *OvnNode) initSharedGateway(subnets []*net.IPNet, gwNextHop net.IP, gwIn
 		VLANID:         &config.Gateway.VLANID,
 	})
 	if err != nil {
+		return nil, err
+	}
+
+	if err := n.initSharedEgressIP(); err != nil {
 		return nil, err
 	}
 

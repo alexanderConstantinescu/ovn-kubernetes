@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
+	egressipv1 "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/kube"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/util"
 	"k8s.io/klog"
@@ -115,6 +116,10 @@ func (n *OvnNode) initLocalnetGateway(hostSubnets []*net.IPNet, nodeAnnotator ku
 		}
 	}
 
+	if err := n.initLocalEgressIP(gatewayIfAddrs); err != nil {
+		return err
+	}
+
 	chassisID, err := util.GetNodeChassisID()
 	if err != nil {
 		return err
@@ -156,14 +161,7 @@ func (n *OvnNode) initLocalnetGateway(hostSubnets []*net.IPNet, nodeAnnotator ku
 	return nil
 }
 
-type localPortWatcherData struct {
-	recorder     record.EventRecorder
-	gatewayIPv4  string
-	gatewayIPv6  string
-	localAddrSet map[string]net.IPNet
-}
-
-func newLocalPortWatcherData(gatewayIfAddrs []*net.IPNet, recorder record.EventRecorder, localAddrSet map[string]net.IPNet) *localPortWatcherData {
+func getGatewayFamilyAddrs(gatewayIfAddrs []*net.IPNet) (string, string) {
 	var gatewayIPv4, gatewayIPv6 string
 	for _, gatewayIfAddr := range gatewayIfAddrs {
 		if utilnet.IsIPv6(gatewayIfAddr.IP) {
@@ -172,6 +170,49 @@ func newLocalPortWatcherData(gatewayIfAddrs []*net.IPNet, recorder record.EventR
 			gatewayIPv4 = gatewayIfAddr.IP.String()
 		}
 	}
+	return gatewayIPv4, gatewayIPv6
+}
+
+func (n *OvnNode) initLocalEgressIP(gatewayIfAddrs []*net.IPNet) error {
+	gatewayIPv4, gatewayIPv6 := getGatewayFamilyAddrs(gatewayIfAddrs)
+	n.modeEgressIP = &egressIPLocal{
+		gatewayIPv4: gatewayIPv4,
+		gatewayIPv6: gatewayIPv6,
+	}
+	if err := n.WatchEgressIP(); err != nil {
+		return err
+	}
+	return nil
+}
+
+type egressIPLocal struct {
+	gatewayIPv4 string
+	gatewayIPv6 string
+}
+
+func (e *egressIPLocal) setupEgressIP(eIPStatus egressipv1.EgressIPStatus) error {
+	if utilnet.IsIPv6String(eIPStatus.EgressIP) {
+		return addIptRules(getEgressIPTRules(eIPStatus, e.gatewayIPv6))
+	}
+	return addIptRules(getEgressIPTRules(eIPStatus, e.gatewayIPv4))
+}
+
+func (e *egressIPLocal) cleanupEgressIP(eIPStatus egressipv1.EgressIPStatus) error {
+	if utilnet.IsIPv6String(eIPStatus.EgressIP) {
+		return delIptRules(getEgressIPTRules(eIPStatus, e.gatewayIPv6))
+	}
+	return delIptRules(getEgressIPTRules(eIPStatus, e.gatewayIPv4))
+}
+
+type localPortWatcherData struct {
+	recorder     record.EventRecorder
+	gatewayIPv4  string
+	gatewayIPv6  string
+	localAddrSet map[string]net.IPNet
+}
+
+func newLocalPortWatcherData(gatewayIfAddrs []*net.IPNet, recorder record.EventRecorder, localAddrSet map[string]net.IPNet) *localPortWatcherData {
+	gatewayIPv4, gatewayIPv6 := getGatewayFamilyAddrs(gatewayIfAddrs)
 	return &localPortWatcherData{
 		gatewayIPv4:  gatewayIPv4,
 		gatewayIPv6:  gatewayIPv6,

@@ -15,6 +15,11 @@ import (
 	utilnet "k8s.io/utils/net"
 )
 
+func (n *OvnNode) initSharedEgressIP() error {
+	n.modeEgressIP = &egressIPShared{}
+	return n.WatchEgressIP()
+}
+
 // Creates br-local OVS bridge on the node and adds ovn-k8s-gw0 port to it with the
 // appropriate IP and MAC address on it. All the traffic from this node's hostNetwork
 // Pod towards cluster service ip whose backend is the node itself is forwarded to the

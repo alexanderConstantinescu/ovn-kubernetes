@@ -7,11 +7,17 @@ import (
 	"strings"
 
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
+	egressipv1 "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/kube"
 	util "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/util"
 	"k8s.io/klog"
 	utilnet "k8s.io/utils/net"
 )
+
+type modeEgressIP interface {
+	setupEgressIP(eIPStatus egressipv1.EgressIPStatus) error
+	cleanupEgressIP(eIPStatus egressipv1.EgressIPStatus) error
+}
 
 // bridgedGatewayNodeSetup makes the bridge's MAC address permanent (if needed), sets up
 // the physical network name mappings for the bridge, and returns an ifaceID
