@@ -74,7 +74,7 @@ func (o *FakeOVN) init() {
 	Expect(err).NotTo(HaveOccurred())
 	o.ovnNBClient = ovntest.NewMockOVNClient(goovn.DBNB)
 	o.ovnSBClient = ovntest.NewMockOVNClient(goovn.DBSB)
-	o.controller = NewOvnController(o.fakeClient, o.watcher,
+	o.controller = NewOvnController(o.fakeClient, egressIPFakeClient, o.watcher,
 		o.stopChan, o.asf, o.ovnNBClient,
 		o.ovnSBClient)
 	o.controller.multicastSupport = true

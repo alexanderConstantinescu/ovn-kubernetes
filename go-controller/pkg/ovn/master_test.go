@@ -308,7 +308,7 @@ var _ = Describe("Master Operations", func() {
 			f, err = factory.NewWatchFactory(fakeClient, egressIPFakeClient)
 			Expect(err).NotTo(HaveOccurred())
 
-			clusterController := NewOvnController(fakeClient, f, stopChan,
+			clusterController := NewOvnController(fakeClient, egressIPFakeClient, f, stopChan,
 				newFakeAddressSetFactory(),
 				mockOVNNBClient,
 				mockOVNSBClient)
@@ -399,7 +399,7 @@ var _ = Describe("Master Operations", func() {
 			f, err = factory.NewWatchFactory(fakeClient, egressIPFakeClient)
 			Expect(err).NotTo(HaveOccurred())
 
-			clusterController := NewOvnController(fakeClient, f, stopChan,
+			clusterController := NewOvnController(fakeClient, egressIPFakeClient, f, stopChan,
 				newFakeAddressSetFactory(), mockOVNNBClient,
 				mockOVNSBClient)
 
@@ -488,7 +488,7 @@ var _ = Describe("Master Operations", func() {
 			f, err = factory.NewWatchFactory(fakeClient, egressIPFakeClient)
 			Expect(err).NotTo(HaveOccurred())
 
-			clusterController := NewOvnController(fakeClient, f, stopChan,
+			clusterController := NewOvnController(fakeClient, egressIPFakeClient, f, stopChan,
 				newFakeAddressSetFactory(), mockOVNNBClient, mockOVNSBClient)
 			Expect(clusterController).NotTo(BeNil())
 			clusterController.TCPLoadBalancerUUID = tcpLBUUID
@@ -634,7 +634,7 @@ subnet=%s
 			f, err = factory.NewWatchFactory(fakeClient, egressIPFakeClient)
 			Expect(err).NotTo(HaveOccurred())
 
-			clusterController := NewOvnController(fakeClient, f, stopChan,
+			clusterController := NewOvnController(fakeClient, egressIPFakeClient, f, stopChan,
 				newFakeAddressSetFactory(), ovntest.NewMockOVNClient(goovn.DBNB),
 				ovntest.NewMockOVNClient(goovn.DBSB))
 			Expect(clusterController).NotTo(BeNil())
@@ -857,7 +857,7 @@ var _ = Describe("Gateway Init Operations", func() {
 			f, err = factory.NewWatchFactory(fakeClient, egressIPFakeClient)
 			Expect(err).NotTo(HaveOccurred())
 
-			clusterController := NewOvnController(fakeClient, f, stopChan, newFakeAddressSetFactory(),
+			clusterController := NewOvnController(fakeClient, egressIPFakeClient, f, stopChan, newFakeAddressSetFactory(),
 				ovntest.NewMockOVNClient(goovn.DBNB),
 				ovntest.NewMockOVNClient(goovn.DBSB))
 			Expect(clusterController).NotTo(BeNil())
@@ -1052,7 +1052,7 @@ var _ = Describe("Gateway Init Operations", func() {
 			f, err = factory.NewWatchFactory(fakeClient, egressIPFakeClient)
 			Expect(err).NotTo(HaveOccurred())
 
-			clusterController := NewOvnController(fakeClient, f, stopChan,
+			clusterController := NewOvnController(fakeClient, egressIPFakeClient, f, stopChan,
 				newFakeAddressSetFactory(), ovntest.NewMockOVNClient(goovn.DBNB),
 				ovntest.NewMockOVNClient(goovn.DBSB))
 			Expect(clusterController).NotTo(BeNil())
