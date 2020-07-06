@@ -7,6 +7,7 @@ import (
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/kube"
 	ovntest "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/testing"
 
+	egressipv1fake "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1/apis/clientset/versioned/fake"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
@@ -57,7 +58,8 @@ var _ = Describe("subnet annotation tests", func() {
 			fakeClient := fake.NewSimpleClientset(&v1.NodeList{
 				Items: []v1.Node{testNode},
 			})
-			nodeAnnotator := kube.NewNodeAnnotator(&kube.Kube{fakeClient}, &testNode)
+			egressIPFakeClient := egressipv1fake.NewSimpleClientset()
+			nodeAnnotator := kube.NewNodeAnnotator(&kube.Kube{fakeClient, egressIPFakeClient}, &testNode)
 
 			err := SetNodeHostSubnetAnnotation(nodeAnnotator, tc.hsIn)
 			Expect(err).NotTo(HaveOccurred())

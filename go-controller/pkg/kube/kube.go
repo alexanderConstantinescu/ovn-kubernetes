@@ -6,6 +6,7 @@ import (
 
 	"k8s.io/klog"
 
+	egressipclientset "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1/apis/clientset/versioned"
 	kapi "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,7 +31,8 @@ type Interface interface {
 
 // Kube is the structure object upon which the Interface is implemented
 type Kube struct {
-	KClient kubernetes.Interface
+	KClient   kubernetes.Interface
+	EIPClient egressipclientset.Interface
 }
 
 // SetAnnotationsOnPod takes the pod object and map of key/value string pairs to set as annotations

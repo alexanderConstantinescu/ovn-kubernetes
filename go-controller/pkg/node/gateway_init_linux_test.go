@@ -412,10 +412,16 @@ var _ = Describe("Gateway Init Operations", func() {
 				},
 			)
 
+			fakeClient := fake.NewSimpleClientset(&v1.NodeList{
+				Items: []v1.Node{existingNode},
+			})
+			egressIPFakeClient := &egressipfake.Clientset{}
+
 			iptV4, _ := util.SetFakeIPTablesHelpers()
 
-			nodeAnnotator := kube.NewNodeAnnotator(&kube.Kube{fakeOvnNode.fakeClient}, &existingNode)
+			nodeAnnotator := kube.NewNodeAnnotator(&kube.Kube{fakeClient, egressIPFakeClient}, &existingNode)
 			err := util.SetNodeHostSubnetAnnotation(nodeAnnotator, ovntest.MustParseIPNets(nodeSubnet))
+
 			Expect(err).NotTo(HaveOccurred())
 			err = nodeAnnotator.Run()
 			Expect(err).NotTo(HaveOccurred())

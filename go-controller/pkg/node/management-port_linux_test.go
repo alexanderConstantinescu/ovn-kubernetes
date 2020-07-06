@@ -18,14 +18,14 @@ import (
 	"github.com/urfave/cli/v2"
 	"github.com/vishvananda/netlink"
 
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
-
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/config"
+	egressipv1fake "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/crd/egressip/v1/apis/clientset/versioned/fake"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/kube"
 	ovntest "github.com/ovn-org/ovn-kubernetes/go-controller/pkg/testing"
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/util"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -124,11 +124,12 @@ func testManagementPort(ctx *cli.Context, fexec *ovntest.FakeExec, testNS ns.Net
 	fakeClient := fake.NewSimpleClientset(&v1.NodeList{
 		Items: []v1.Node{existingNode},
 	})
+	eIPFakeClient := egressipv1fake.NewSimpleClientset()
 
 	_, err = config.InitConfig(ctx, fexec, nil)
 	Expect(err).NotTo(HaveOccurred())
 
-	nodeAnnotator := kube.NewNodeAnnotator(&kube.Kube{fakeClient}, &existingNode)
+	nodeAnnotator := kube.NewNodeAnnotator(&kube.Kube{fakeClient, eIPFakeClient}, &existingNode)
 	waiter := newStartupWaiter()
 
 	err = testNS.Do(func(ns.NetNS) error {
