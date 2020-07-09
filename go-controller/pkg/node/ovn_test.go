@@ -13,6 +13,8 @@ import (
 	"k8s.io/client-go/tools/record"
 )
 
+var fakeNodeName = "node"
+
 type FakeOVNNode struct {
 	node             *OvnNode
 	watcher          *factory.WatchFactory
@@ -58,5 +60,5 @@ func (o *FakeOVNNode) init() {
 	o.watcher, err = factory.NewWatchFactory(o.fakeClient, o.fakeEgressClient)
 	Expect(err).NotTo(HaveOccurred())
 
-	o.node = NewNode(o.fakeClient, o.watcher, "node", o.stopChan, o.recorder)
+	o.node = NewNode(o.fakeClient, o.watcher, fakeNodeName, o.stopChan, o.recorder)
 }
