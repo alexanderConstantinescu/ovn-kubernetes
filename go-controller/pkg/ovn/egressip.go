@@ -258,16 +258,6 @@ func (oc *Controller) assignEgressIPs(eIP *egressipv1.EgressIP) ([]egressipv1.Eg
 	for _, egressIP := range eIP.Spec.EgressIPs {
 		klog.V(5).Infof("Will attempt assignment for egress IP: %s", egressIP)
 		eIPC := net.ParseIP(egressIP)
-		if eIPC == nil {
-			eIPRef := kapi.ObjectReference{
-				Kind:      "EgressIP",
-				Namespace: eIP.Namespace,
-				Name:      eIP.Name,
-			}
-			oc.recorder.Eventf(&eIPRef, kapi.EventTypeWarning, "InvalidEgressIP", "egress IP: %s for object EgressIP: %s is not a valid IP address", egressIP, eIP.Name)
-			klog.Errorf("Unable to parse provided EgressIP: %s, invalid", egressIP)
-			continue
-		}
 		for i := 0; i < len(eNodes); i++ {
 			klog.V(5).Infof("Attempting assignment on egress node: %+v", eNodes[i])
 			if _, exists := existingAllocations[eIPC.String()]; !exists {
