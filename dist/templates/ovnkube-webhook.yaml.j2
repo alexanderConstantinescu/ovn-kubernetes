@@ -43,3 +43,24 @@ spec:
     - port: 443
       targetPort: webhook-api
 ---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: ovnkube-admission-webhook
+webhooks:
+  - name: ovnkube-webhook.ovn-kubernetes.svc
+    clientConfig:
+      service:
+        name: ovnkube-webhook
+        namespace: ovn-kubernetes
+        path: "/egressip"
+      caBundle: "{{ ca_pem_64 }}"
+    rules:
+      - operations: [ "CREATE" ]
+        apiGroups: ["k8s.ovn.org"]
+        apiVersions: ["v1"]
+        resources: ["egressip", "egressips", "eip"]
+        scope: "Cluster"
+    admissionReviewVersions: ["v1", "v1beta1"]
+    sideEffects: None
+    timeoutSeconds: 5
