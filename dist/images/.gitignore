@@ -3,3 +3,4 @@ ovn-kube-util
 ovnkube
 hybrid-overlay-node
 git_info
+ovnkube-webhook
