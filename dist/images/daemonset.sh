@@ -44,6 +44,9 @@ while [ "$1" != "" ]; do
   --image)
     OVN_IMAGE=$VALUE
     ;;
+  --webhook-image)
+    OVN_WEBHOOK_IMAGE=$VALUE
+    ;;
   --image-pull-policy)
     OVN_IMAGE_PULL_POLICY=$VALUE
     ;;
@@ -144,6 +147,9 @@ done
 
 image=${OVN_IMAGE:-"docker.io/ovnkube/ovn-daemonset:latest"}
 echo "image: ${image}"
+
+webhook_image=${OVN_WEBHOOK_IMAGE:-"docker.io/ovnkube/ovn-webhook:latest"}
+echo "webhook image: ${webhook_image}"
 
 image_pull_policy=${OVN_IMAGE_PULL_POLICY:-"IfNotPresent"}
 echo "imagePullPolicy: ${image_pull_policy}"
@@ -258,6 +264,16 @@ ovn_image=${image} \
   ovn_nb_raft_port=${ovn_nb_raft_port} \
   ovn_sb_raft_port=${ovn_sb_raft_port} \
   j2 ../templates/ovnkube-db-raft.yaml.j2 -o ../yaml/ovnkube-db-raft.yaml
+
+pushd ../keys
+sh gen_keys.sh
+ca_pem_b64="$(openssl base64 -A <"ca.crt")"
+popd
+
+ovn_webhook_image=${webhook_image} \
+  ovn_image_pull_policy=${image_pull_policy} \
+  ca_pem_64=${ca_pem_b64} \
+  j2 ../templates/ovnkube-webhook.yaml.j2 -o ../yaml/ovnkube-webhook.yaml
 
 # ovn-setup.yaml
 net_cidr=${OVN_NET_CIDR:-"10.128.0.0/14/23"}

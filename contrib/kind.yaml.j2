@@ -15,6 +15,7 @@ kubeadmConfigPatches:
     name: config
   apiServer:
     extraArgs:
+      "enable-admission-plugins": "ValidatingAdmissionWebhook"
       "feature-gates": "SCTPSupport=true"
   etcd:
     local:

@@ -237,9 +237,11 @@ popd
 pushd ../dist/images
 sudo cp -f ../../go-controller/_output/go/bin/* .
 echo "ref: $(git rev-parse  --symbolic-full-name HEAD)  commit: $(git rev-parse  HEAD)" > git_info
+docker build -t ovnkube-webhook:dev -f Dockerfile.webhook .
 docker build -t ovn-daemonset-f:dev -f Dockerfile.fedora .
 ./daemonset.sh \
   --image=docker.io/library/ovn-daemonset-f:dev \
+  --webhook-image=docker.io/library/ovnkube-webhook:dev \
   --net-cidr=${NET_CIDR} \
   --svc-cidr=${SVC_CIDR} \
   --gateway-mode=${OVN_GATEWAY_MODE} \
@@ -251,6 +253,7 @@ docker build -t ovn-daemonset-f:dev -f Dockerfile.fedora .
   --egress-ip-enable=true
 popd
 kind load docker-image ovn-daemonset-f:dev --name ${KIND_CLUSTER_NAME}
+kind load docker-image ovnkube-webhook:dev --name ${KIND_CLUSTER_NAME}
 pushd ../dist/yaml
 run_kubectl apply -f k8s.ovn.org_egressips.yaml 
 run_kubectl apply -f ovn-setup.yaml
@@ -269,7 +272,16 @@ fi
 run_kubectl apply -f ovnkube-master.yaml
 run_kubectl apply -f ovnkube-node.yaml
 popd
+pushd ../dist/keys 
+run_kubectl -n ovn-kubernetes create secret tls webhook-server-tls \
+    --cert "webhook-server-tls.crt" \
+    --key "webhook-server-tls.key"
+popd
 run_kubectl -n kube-system delete ds kube-proxy
+#DO this after having deleted kube-proxy so that it does not create the REJECT rules before being deleted
+pushd ../dist/yaml
+run_kubectl apply -f ovnkube-webhook.yaml
+popd
 kind get clusters
 kind get nodes --name ${KIND_CLUSTER_NAME}
 kind export kubeconfig --name ovn
@@ -291,4 +303,3 @@ until [ -z "$(kubectl get pod -A -o custom-columns=NAME:metadata.name,STATUS:.st
 done
 echo "Pods are all up, allowing things settle for 30 seconds..."
 sleep 30
-

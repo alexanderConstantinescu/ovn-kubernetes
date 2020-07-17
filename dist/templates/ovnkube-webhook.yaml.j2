@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ovnkube-webhook
+  namespace: ovn-kubernetes
+  labels:
+    app: ovnkube-webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ovnkube-webhook
+  template:
+    metadata:
+      labels:
+        app: ovnkube-webhook
+    spec:
+      containers:
+      - name: server
+        image: "{{ ovn_webhook_image | default('docker.io/ovnkube/ovn-webhook:latest') }}"
+        imagePullPolicy: "{{ ovn_image_pull_policy | default('IfNotPresent') }}"
+        ports:
+        - containerPort: 8443
+          name: webhook-api
+        volumeMounts:
+        - name: webhook-tls-certs
+          mountPath: /run/secrets/tls
+          readOnly: true
+      volumes:
+      - name: webhook-tls-certs
+        secret:
+          secretName: webhook-server-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ovnkube-webhook
+  namespace: ovn-kubernetes
+spec:
+  selector:
+    app: ovnkube-webhook
+  ports:
+    - port: 443
+      targetPort: webhook-api
+---
