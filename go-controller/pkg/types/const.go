@@ -54,15 +54,16 @@ const (
 	DefaultDenyPriority = "1000"
 
 	// priority of logical router policies on the OVNClusterRouter
-	EgressFirewallStartPriority           = "10000"
-	MinimumReservedEgressFirewallPriority = "2000"
-	MGMTPortPolicyPriority                = "1005"
-	NodeSubnetPolicyPriority              = "1004"
-	InterNodePolicyPriority               = "1003"
-	HybridOverlaySubnetPriority           = "1002"
-	HybridOverlayReroutePriority          = "501"
-	DefaultNoRereoutePriority             = "101"
-	EgressIPReroutePriority               = "100"
+	EgressFirewallDefaultInternalClusterPriority = "10001"
+	EgressFirewallStartPriority                  = "10000"
+	MinimumReservedEgressFirewallPriority        = "2000"
+	MGMTPortPolicyPriority                       = "1005"
+	NodeSubnetPolicyPriority                     = "1004"
+	InterNodePolicyPriority                      = "1003"
+	HybridOverlaySubnetPriority                  = "1002"
+	HybridOverlayReroutePriority                 = "501"
+	DefaultNoRereoutePriority                    = "101"
+	EgressIPReroutePriority                      = "100"
 
 	V6NodeLocalNATSubnet           = "fd99::/64"
 	V6NodeLocalNATSubnetPrefix     = 64

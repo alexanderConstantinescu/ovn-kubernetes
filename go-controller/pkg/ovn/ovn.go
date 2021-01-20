@@ -119,11 +119,12 @@ type namespaceInfo struct {
 // Controller structure is the object which holds the controls for starting
 // and reacting upon the watched resources (e.g. pods, endpoints)
 type Controller struct {
-	client                clientset.Interface
-	kube                  kube.Interface
-	watchFactory          *factory.WatchFactory
-	egressFirewallHandler *factory.Handler
-	stopChan              <-chan struct{}
+	client                    clientset.Interface
+	kube                      kube.Interface
+	watchFactory              *factory.WatchFactory
+	egressFirewallHandler     *factory.Handler
+	egressFirewallNodeHandler *factory.Handler
+	stopChan                  <-chan struct{}
 
 	// FIXME DUAL-STACK -  Make IP Allocators more dual-stack friendly
 	masterSubnetAllocator     *subnetallocator.SubnetAllocator
@@ -674,7 +675,9 @@ func (oc *Controller) WatchCRD() {
 					return
 				}
 				oc.egressFirewallDNS.Run(egressFirewallDNSDefaultDuration)
+				oc.egressFirewallNodeHandler = oc.WatchEgressFirewallNodes()
 				oc.egressFirewallHandler = oc.WatchEgressFirewall()
+
 			}
 		},
 		UpdateFunc: func(old, newer interface{}) {
@@ -684,10 +687,28 @@ func (oc *Controller) WatchCRD() {
 			klog.Infof("Deleting CRD %s from cluster", crd.Name)
 			if crd.Name == egressfirewallCRD {
 				oc.egressFirewallDNS.Shutdown()
+				oc.deleteDefaultAllowACLsForEgressFirewall()
 				oc.watchFactory.RemoveEgressFirewallHandler(oc.egressFirewallHandler)
+				oc.watchFactory.RemoveNodeHandler(oc.egressFirewallNodeHandler)
 				oc.egressFirewallHandler = nil
+				oc.egressFirewallNodeHandler = nil
 				oc.watchFactory.ShutdownEgressFirewallWatchFactory()
 			}
+		},
+	}, nil)
+}
+
+// WatchEgressFirewallNodes starts the watching of nodes resource and calls
+// back the appropriate handler logic
+func (oc *Controller) WatchEgressFirewallNodes() *factory.Handler {
+	return oc.watchFactory.AddNodeHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			node := obj.(*kapi.Node)
+			oc.addNodeForEgressFirewall(node)
+		},
+		DeleteFunc: func(obj interface{}) {
+			node := obj.(*kapi.Node)
+			oc.deleteNodeForEgressFirewall(node)
 		},
 	}, nil)
 }

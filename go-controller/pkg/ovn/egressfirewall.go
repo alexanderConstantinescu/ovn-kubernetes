@@ -14,6 +14,7 @@ import (
 	"github.com/ovn-org/ovn-kubernetes/go-controller/pkg/util"
 
 	kapi "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	utilnet "k8s.io/utils/net"
@@ -429,6 +430,178 @@ func (oc *Controller) deleteEgressFirewallRules(externalID string) error {
 	return deletionErrors
 }
 
+// addNodeForEgressFirewall creates the default allow ACLs as follows:
+// - allow cluster subnet on its own switch
+// - allows service subnet on its own switch
+// - allow node's IP on every nodes' switch
+func (oc *Controller) addNodeForEgressFirewall(node *v1.Node) {
+	matchConditions := []string{}
+	v4ClusterSubnet, v6ClusterSubnet := getClusterSubnets()
+	v4ServiceSubnet, v6ServiceSubnet := getServiceSubnets()
+	if config.Gateway.Mode == config.GatewayModeLocal {
+		matchConditions = append(matchConditions, generateDefaultClusterSubnetAllowMatch(v4ClusterSubnet, v6ClusterSubnet)...)
+		matchConditions = append(matchConditions, generateDefaultServiceSubnetAllowMatch(v4ServiceSubnet, v6ServiceSubnet)...)
+	}
+	for _, match := range matchConditions {
+		_, stderr, err := util.RunOVNNbctl(
+			"--may-exist",
+			"acl-add",
+			node.Name,
+			types.DirectionFromLPort,
+			types.EgressFirewallDefaultInternalClusterPriority,
+			match,
+			"allow",
+		)
+		if err != nil {
+			klog.Errorf("Unable to create default allow ACL on switch: %s, stderr: %s, err: %v", node.Name, stderr, err)
+		}
+	}
+	matchConditions = oc.generateDefaultNodeAllowMatch(node)
+	logicalSwitches := oc.getEgressFirewallACLSwitches()
+	for _, logicalSwitch := range logicalSwitches {
+		for _, match := range matchConditions {
+			_, stderr, err := util.RunOVNNbctl(
+				"--may-exist",
+				"acl-add",
+				logicalSwitch,
+				types.DirectionFromLPort,
+				types.EgressFirewallDefaultInternalClusterPriority,
+				match,
+				"allow",
+			)
+			if err != nil {
+				klog.Errorf("Unable to create default allow ACL on switch: %s, stderr: %s, err: %v", logicalSwitch, stderr, err)
+			}
+		}
+	}
+}
+
+// deleteNodeForEgressFirewall deletes the default allow ACLs as follows:
+// - allow node's IP on every nodes' switch
+func (oc *Controller) deleteNodeForEgressFirewall(node *v1.Node) {
+	matchConditions := oc.generateDefaultNodeAllowMatch(node)
+	logicalSwitches := oc.getEgressFirewallACLSwitches()
+	for _, logicalSwitch := range logicalSwitches {
+		for _, match := range matchConditions {
+			_, stderr, err := util.RunOVNNbctl(
+				"acl-del",
+				logicalSwitch,
+				types.DirectionFromLPort,
+				types.EgressFirewallDefaultInternalClusterPriority,
+				match,
+			)
+			if err != nil {
+				klog.Errorf("Unable to delete default allow ACL on switch: %s, stderr: %s, err: %v", logicalSwitch, stderr, err)
+			}
+		}
+	}
+}
+
+// deleteDefaultAllowACLsForEgressFirewall deletes the default allow ACLs as follows:
+// - allow cluster subnet on every nodes' switch
+// - allows service subnet on every nodes' switch
+// - all allow node IPs on every nodes' switch
+func (oc *Controller) deleteDefaultAllowACLsForEgressFirewall() {
+	matchConditions := []string{}
+	v4ClusterSubnet, v6ClusterSubnet := getClusterSubnets()
+	v4ServiceSubnet, v6ServiceSubnet := getServiceSubnets()
+	if config.Gateway.Mode == config.GatewayModeLocal {
+		matchConditions = append(matchConditions, generateDefaultClusterSubnetAllowMatch(v4ClusterSubnet, v6ClusterSubnet)...)
+		matchConditions = append(matchConditions, generateDefaultServiceSubnetAllowMatch(v4ServiceSubnet, v6ServiceSubnet)...)
+	}
+	nodes, err := oc.watchFactory.GetNodes()
+	if err != nil {
+		klog.Errorf("Unable to delete default allow node ACLs, error fetching nodes, err: %v", err)
+	}
+	for _, node := range nodes {
+		matchConditions = append(matchConditions, oc.generateDefaultNodeAllowMatch(node)...)
+	}
+	logicalSwitches := oc.getEgressFirewallACLSwitches()
+	for _, logicalSwitch := range logicalSwitches {
+		for _, match := range matchConditions {
+			_, stderr, err := util.RunOVNNbctl(
+				"acl-del",
+				logicalSwitch,
+				types.DirectionFromLPort,
+				types.EgressFirewallDefaultInternalClusterPriority,
+				match,
+			)
+			if err != nil {
+				klog.Errorf("Unable to delete default allow ACL on switch: %s, stderr: %s, err: %v", logicalSwitch, stderr, err)
+			}
+		}
+	}
+}
+
+// generateDefaultClusterSubnetAllowMatch generated default allow ACLs for
+// cluster internal communication to pod traffic
+func generateDefaultClusterSubnetAllowMatch(v4ClusterSubnets, v6ClusterSubnets []*net.IPNet) []string {
+	matchConditions := []string{}
+	for _, v4Subnet := range v4ClusterSubnets {
+		matchConditions = append(matchConditions, fmt.Sprintf("ip4.dst == %s", v4Subnet.String()))
+	}
+	for _, v6Subnet := range v6ClusterSubnets {
+		matchConditions = append(matchConditions, fmt.Sprintf("ip6.dst == %s", v6Subnet.String()))
+	}
+	return matchConditions
+}
+
+// generateDefaultServiceSubnetAllowMatch generated default allow ACLs for
+// cluster internal communication to service traffic
+func generateDefaultServiceSubnetAllowMatch(v4ServiceSubnet, v6ServiceSubnet *net.IPNet) []string {
+	matchConditions := []string{}
+	if v4ServiceSubnet != nil {
+		matchConditions = append(matchConditions, fmt.Sprintf("ip4.dst == %s", v4ServiceSubnet.String()))
+
+	}
+	if v6ServiceSubnet != nil {
+		matchConditions = append(matchConditions, fmt.Sprintf("ip6.dst == %s", v6ServiceSubnet.String()))
+	}
+	return matchConditions
+}
+
+// generateDefaultNodeAllowMatch generated default allow ACLs for
+// cluster internal communication to node (or host network pod) traffic
+func (oc *Controller) generateDefaultNodeAllowMatch(addNode *v1.Node) []string {
+	matchConditions := []string{}
+	v4Addr, v6Addr := getNodeInternalAddrs(addNode)
+	if v4Addr != nil {
+		matchConditions = append(matchConditions, fmt.Sprintf("ip4.dst == %s/32", v4Addr.String()))
+	}
+	if v6Addr != nil {
+		matchConditions = append(matchConditions, fmt.Sprintf("ip6.dst == %s/128", v6Addr.String()))
+	}
+	return matchConditions
+}
+
+func (oc *Controller) getEgressFirewallACLSwitches() []string {
+	logicalSwitches := []string{}
+	if config.Gateway.Mode == config.GatewayModeLocal {
+		nodes, err := oc.watchFactory.GetNodes()
+		if err != nil {
+			klog.Errorf("Unable to setup default allow ACLs, could not get all cluster nodes, err: %v", err)
+		}
+		for _, node := range nodes {
+			logicalSwitches = append(logicalSwitches, node.Name)
+		}
+	} else {
+		logicalSwitches = []string{types.OVNJoinSwitch}
+	}
+	return logicalSwitches
+}
+
+func getServiceSubnets() (*net.IPNet, *net.IPNet) {
+	var v4ClusterSubnet, v6ClusterSubnet *net.IPNet
+	for _, serviceSubnet := range config.Kubernetes.ServiceCIDRs {
+		if !utilnet.IsIPv6CIDR(serviceSubnet) {
+			v4ClusterSubnet = serviceSubnet
+		} else {
+			v6ClusterSubnet = serviceSubnet
+		}
+	}
+	return v4ClusterSubnet, v6ClusterSubnet
+}
+
 type matchTarget struct {
 	kind  matchKind
 	value string
@@ -466,7 +639,7 @@ func (m *matchTarget) toExpr() (string, error) {
 // generateMatch generates the "match" section of ACL generation for egressFirewallRules.
 // It is referentially transparent as all the elements have been validated before this function is called
 // sample output:
-// match=\"(ip4.dst == 1.2.3.4/32) && ip4.src == $testv4 && ip4.dst != 10.128.0.0/14\
+// match=\"(ip4.dst == 1.2.3.4/32) && ip4.src == $testv4 \
 func generateMatch(ipv4Source, ipv6Source string, destinations []matchTarget, dstPorts []egressfirewallapi.EgressFirewallPort) string {
 	var src string
 	var dst string
@@ -501,12 +674,11 @@ func generateMatch(ipv4Source, ipv6Source string, destinations []matchTarget, ds
 		match = fmt.Sprintf("%s && %s", match, egressGetL4Match(dstPorts))
 	}
 
-	if config.Gateway.Mode == config.GatewayModeLocal {
-		extraMatch = getClusterSubnetsExclusion()
-	} else {
+	if config.Gateway.Mode == config.GatewayModeShared {
 		extraMatch = fmt.Sprintf("inport == \\\"%s%s\\\"", types.JoinSwitchToGWRouterPrefix, types.OVNClusterRouter)
+		return fmt.Sprintf("%s && %s\"", match, extraMatch)
 	}
-	return fmt.Sprintf("%s && %s\"", match, extraMatch)
+	return fmt.Sprintf("%s\"", match)
 }
 
 // egressGetL4Match generates the rules for when ports are specified in an egressFirewall Rule
@@ -574,19 +746,4 @@ func egressGetL4Match(ports []egressfirewallapi.EgressFirewallPort) string {
 		}
 	}
 	return fmt.Sprintf("(%s)", l4Match)
-}
-
-func getClusterSubnetsExclusion() string {
-	var exclusion string
-	for _, clusterSubnet := range config.Default.ClusterSubnets {
-		if exclusion != "" {
-			exclusion += " && "
-		}
-		if utilnet.IsIPv6CIDR(clusterSubnet.CIDR) {
-			exclusion += fmt.Sprintf("%s.dst != %s", "ip6", clusterSubnet.CIDR)
-		} else {
-			exclusion += fmt.Sprintf("%s.dst != %s", "ip4", clusterSubnet.CIDR)
-		}
-	}
-	return exclusion
 }
