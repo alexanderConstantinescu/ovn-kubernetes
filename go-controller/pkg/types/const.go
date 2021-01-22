@@ -43,27 +43,34 @@ const (
 	// ACL Priorities
 
 	// Default routed multicast allow acl rule priority
-	DefaultRoutedMcastAllowPriority = "1013"
+	DefaultRoutedMcastAllowPriority = "10013"
 	// Default multicast allow acl rule priority
-	DefaultMcastAllowPriority = "1012"
+	DefaultMcastAllowPriority = "10012"
 	// Default multicast deny acl rule priority
-	DefaultMcastDenyPriority = "1011"
+	DefaultMcastDenyPriority = "10011"
 	// Default allow acl rule priority
-	DefaultAllowPriority = "1001"
+	DefaultAllowPriority = "10001"
 	// Default deny acl rule priority
-	DefaultDenyPriority = "1000"
+	DefaultDenyPriority = "10000"
+	// Default egress firewall allow priority for internal cluster traffic.
+	// Must be below DefaultDenyPriority, since that is used for in-cluster
+	// reject ACLs, which takes precedence
+	EgressFirewallDefaultInternalClusterPriority = "9999"
+	// Default egress firewall priority for egress traffic.
+	// Must be below EgressFirewallDefaultInternalClusterPriority, since
+	// that is used to allow in-cluster traffic for pods matching an
+	// egress firewall rule
+	EgressFirewallStartPriority           = "9998"
+	MinimumReservedEgressFirewallPriority = "2000"
 
 	// priority of logical router policies on the OVNClusterRouter
-	EgressFirewallDefaultInternalClusterPriority = "10001"
-	EgressFirewallStartPriority                  = "10000"
-	MinimumReservedEgressFirewallPriority        = "2000"
-	MGMTPortPolicyPriority                       = "1005"
-	NodeSubnetPolicyPriority                     = "1004"
-	InterNodePolicyPriority                      = "1003"
-	HybridOverlaySubnetPriority                  = "1002"
-	HybridOverlayReroutePriority                 = "501"
-	DefaultNoRereoutePriority                    = "101"
-	EgressIPReroutePriority                      = "100"
+	MGMTPortPolicyPriority       = "1005"
+	NodeSubnetPolicyPriority     = "1004"
+	InterNodePolicyPriority      = "1003"
+	HybridOverlaySubnetPriority  = "1002"
+	HybridOverlayReroutePriority = "501"
+	DefaultNoRereoutePriority    = "101"
+	EgressIPReroutePriority      = "100"
 
 	V6NodeLocalNATSubnet           = "fd99::/64"
 	V6NodeLocalNATSubnetPrefix     = 64
