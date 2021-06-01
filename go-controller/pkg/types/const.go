@@ -34,6 +34,13 @@ const (
 	EXTSwitchToGWRouterPrefix    = "etor-"
 	GWRouterToExtSwitchPrefix    = "rtoe-"
 
+	// Egress IP port for BFD mesh
+	EgressIPRouterPortName = "egressip-router-port"
+	// Egress IP network for BFD mesh. This is a fake network which is unused,
+	// it's only required for setting up the router port when configuring the
+	// BFD mesh
+	EgressIPRouterPortNet = "169.169.169.169/32"
+
 	NodeLocalSwitch = "node_local_switch"
 
 	// ACL directions

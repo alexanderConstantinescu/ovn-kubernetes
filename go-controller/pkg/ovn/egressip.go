@@ -520,11 +520,63 @@ func (oc *Controller) initEgressIPAllocator(node *kapi.Node) (err error) {
 	return nil
 }
 
+func (oc *Controller) deleteGatewayChassisFromEgressRouterPort(node *v1.Node) error {
+	chassisName, err := oc.findGatewayChassisName(node)
+	if err != nil {
+		return err
+	}
+	_, stderr, err := util.RunOVNNbctl(
+		"lrp-del-gateway-chassis",
+		types.EgressIPRouterPortName,
+		chassisName,
+	)
+	if err != nil {
+		return fmt.Errorf("unable to delete chassis for node: %s on egress IP router port, stderr: %s, err: %v", node.Name, stderr, err)
+	}
+	return nil
+}
+
+func (oc *Controller) addGatewayChassisToEgressRouterPort(node *v1.Node) error {
+	chassisName, err := oc.findGatewayChassisName(node)
+	if err != nil {
+		return err
+	}
+	_, stderr, err := util.RunOVNNbctl(
+		"lrp-set-gateway-chassis",
+		types.EgressIPRouterPortName,
+		chassisName,
+		"100",
+	)
+	if err != nil {
+		return fmt.Errorf("unable to set chassis for node: %s on egress IP router port, stderr: %s, err: %v", node.Name, stderr, err)
+	}
+	return nil
+}
+
+func (oc *Controller) findGatewayChassisName(node *v1.Node) (string, error) {
+	chassisName, stderr, err := util.RunOVNSbctl(
+		"--format=table",
+		"--no-heading",
+		"--data=bare",
+		"--columns=name",
+		"find",
+		"chassis",
+		fmt.Sprintf("hostname=%s", node.Name),
+	)
+	if err != nil {
+		return "", fmt.Errorf("unable to find node: %s chassis in southbound, stderr: %s, err: %v", node.Name, stderr, err)
+	}
+	return strings.TrimSuffix(chassisName, "\n"), nil
+}
+
 func (oc *Controller) addNodeForEgress(node *v1.Node) error {
 	v4Addr, v6Addr := getNodeInternalAddrs(node)
 	v4ClusterSubnet, v6ClusterSubnet := getClusterSubnets()
 	if err := createDefaultNoRerouteNodePolicies(v4Addr, v6Addr, v4ClusterSubnet, v6ClusterSubnet); err != nil {
 		return err
+	}
+	if err := oc.addGatewayChassisToEgressRouterPort(node); err != nil {
+		return fmt.Errorf("egress router port initialization error: %v", err)
 	}
 	if err := oc.initEgressIPAllocator(node); err != nil {
 		return fmt.Errorf("egress node initialization error: %v", err)
@@ -538,6 +590,9 @@ func (oc *Controller) deleteNodeForEgress(node *v1.Node) error {
 	if err := deleteDefaultNoRerouteNodePolicies(v4Addr, v6Addr, v4ClusterSubnet, v6ClusterSubnet); err != nil {
 		return err
 	}
+	if err := oc.deleteGatewayChassisFromEgressRouterPort(node); err != nil {
+		return err
+	}
 	oc.eIPC.allocatorMutex.Lock()
 	delete(oc.eIPC.allocator, node.Name)
 	oc.eIPC.allocatorMutex.Unlock()
@@ -547,6 +602,7 @@ func (oc *Controller) deleteNodeForEgress(node *v1.Node) error {
 func (oc *Controller) initClusterEgressPolicies(nodes []interface{}) {
 	v4ClusterSubnet, v6ClusterSubnet := getClusterSubnets()
 	createDefaultNoReroutePodPolicies(v4ClusterSubnet, v6ClusterSubnet)
+	createEgressRouterPort()
 }
 
 // egressNode is a cache helper used for egress IP assignment, representing an egress node
@@ -883,6 +939,22 @@ func createDefaultNoRerouteNodePolicies(v4NodeAddr, v6NodeAddr net.IP, v4Cluster
 		}
 	}
 	return nil
+}
+
+func createEgressRouterPort() {
+	egressIPRouterPortIP, egressIPRouterPortNet, _ := net.ParseCIDR(types.EgressIPRouterPortNet)
+	egressIPRouterPortMAC := util.IPAddrToHWAddr(egressIPRouterPortIP)
+	_, stderr, err := util.RunOVNNbctl(
+		"--may-exist",
+		"lrp-add",
+		types.OVNClusterRouter,
+		types.EgressIPRouterPortName,
+		egressIPRouterPortMAC.String(),
+		egressIPRouterPortNet.String(),
+	)
+	if err != nil {
+		klog.Errorf("unable to create egress IP router port, stderr: %s, err: %v", stderr, err)
+	}
 }
 
 func deleteDefaultNoRerouteNodePolicies(v4NodeAddr, v6NodeAddr net.IP, v4ClusterSubnet, v6ClusterSubnet []*net.IPNet) error {
